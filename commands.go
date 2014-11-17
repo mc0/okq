@@ -1,243 +1,206 @@
 package main
 
 import (
-	"errors"
+	"io"
 	"fmt"
 	"github.com/fzzy/radix/redis"
 	"github.com/fzzy/radix/redis/resp"
 	"strconv"
+	"strings"
 )
 
-func qregister(client *Client, args []string) {
+func writeServerErr(w io.Writer, err error) error {
+	return writeErrf(w, "ERR server-side: %s", err)
+}
+
+func writeErrf(w io.Writer, format string, args ...interface{}) error {
+	err := fmt.Errorf(format, args...)
+	return resp.WriteArbitrary(w, err)
+}
+
+func qregister(client *Client, args []string) error {
 	// reset the queue list to what was sent
 	client.queues = args
-	conn := *client.conn
+	conn := client.conn
 
 	throttledWriteAllConsumers()
 
+	// TODO add WriteSimpleString to resp
 	conn.Write([]byte("+OK\r\n"))
+	return nil
 }
 
-func qpeekgeneric(client *Client, args []string, direction string) {
-	var err error
-	conn := *client.conn
+func qpeekgeneric(client *Client, args []string, peekRight bool) error {
+	conn := client.conn
 	if len(args) < 1 {
-		err = errors.New("ERR missing args")
-		resp.WriteArbitrary(conn, err)
-		return
+		writeErrf(conn, "ERR missing args")
 	}
-
+	return nil
 }
 
-func qrpop(client *Client, args []string) {
-	var err error
-	conn := *client.conn
+func qrpop(client *Client, args []string) error {
+	conn := client.conn
 	if len(args) < 1 {
-		err = errors.New("ERR missing args")
-		resp.WriteArbitrary(conn, err)
-		return
+		writeErrf(conn, "ERR missing args")
+		return nil
 	}
 
 	queueName := args[0]
+	var err error
 	expires := 30
-	//delete := false
-	if len(args) > 2 && args[1] == "EX" {
-		argsRest := args[1:]
-		for i := range argsRest {
-			switch argsRest[i] {
-			case "EX":
-				expires, err = strconv.Atoi(args[2])
-				if err != nil {
-					err = errors.New("ERR bad expires value")
-					resp.WriteArbitrary(conn, err)
-					return
-				}
-			case "DELETE":
-				//delete = true
-			}
+
+	unsafe := false
+	if len(args) > 2 && strings.ToUpper(args[1]) == "EX" {
+		expires, err = strconv.Atoi(args[2])
+		if err != nil {
+			writeErrf(conn, "ERR bad expires value: %s", err)
+			return nil
 		}
+		args = args[3:]
+	}
+	if len(args) > 0 && strings.ToUpper(args[0]) == "UNSAFE" {
+		unsafe = true
 	}
 
 	redisClient, err := redisPool.Get()
 	if err != nil {
-		err = errors.New(fmt.Sprintf("ERR failed to get redis conn %q", err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, err)
+		return fmt.Errorf("QRPOP redisPool.Get(): %s", err)
 	}
-	defer redisPool.Put(redisClient)
 
-	reply := redisClient.Cmd("RPOPLPUSH", "queue:"+queueName, "queue:claimed:"+queueName)
-	if reply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR rpoplpush redis replied %q", reply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
-	}
+	unclaimedKey := queueKey(queueName)
+	claimedKey := queueKey(queueName, "claimed")
+	reply := redisClient.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
 	if reply.Type == redis.NilReply {
 		resp.WriteArbitrary(conn, nil)
-		return
+		return nil
 	}
 
 	eventID, err := reply.Str()
 	if err != nil {
-		err = errors.New(fmt.Sprintf("ERR cast failed %q", err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, err)
+		return fmt.Errorf("QRPOP RPOPLPUSH: %s", err)
 	}
 
-	reply = redisClient.Cmd("SET", "queue:lock:"+queueName+":"+eventID, 1, "EX", strconv.Itoa(expires), "NX")
+	lockKey := queueKey(queueName, "lock", eventID)
+	reply = redisClient.Cmd("SET", lockKey, 1, "EX", strconv.Itoa(expires), "NX")
 	if reply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR set redis replied %q", reply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, reply.Err)
+		return fmt.Errorf("QRPOP SET: %s", reply.Err)
 	}
 
-	reply = redisClient.Cmd("HGET", "queue:items:"+queueName, eventID)
-	if reply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR hget redis replied %q", reply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
-	}
+	itemsKey := queueKey(queueName, "items")
+	reply = redisClient.Cmd("HGET", itemsKey)
 
 	var eventRaw string
 	if reply.Type != redis.NilReply {
-		eventRaw, err = reply.Str()
-		if err != nil {
-			err = errors.New(fmt.Sprintf("ERR cast failed %q", err))
-			logger.Printf("%s", err)
-			resp.WriteArbitrary(conn, err)
-			return
+		if eventRaw, err = reply.Str(); err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QRPOP HGET: %s", err)
 		}
 	}
 
-	result := [2]string{eventID, eventRaw}
+	if unsafe {
+		qrem(client, []string{queueName, eventID})
+	}
 
-	resp.WriteArbitrary(conn, result)
-
-	go func(client Client, queueName string, eventID string) {
-		// TODO: don't send the real client here
-		//fakeClient := Client{conn: &io.PipeWriter{}}
-		qrem(&client, []string{queueName, eventID})
-	}(*client, queueName, eventID)
+	resp.WriteArbitrary(conn, [2]string{eventID, eventRaw})
+	redisPool.Put(redisClient)
+	return nil
 }
 
-func qrem(client *Client, args []string) {
+func qrem(client *Client, args []string) error {
 	var err error
-	conn := *client.conn
+	conn := client.conn
 	if len(args) < 2 {
-		err = errors.New("ERR missing args")
-		resp.WriteArbitrary(conn, err)
-		return
+		writeErrf(conn, "ERR missing args")
+		return nil
 	}
 	redisClient, err := redisPool.Get()
 	if err != nil {
-		return
-	}
-	defer redisPool.Put(redisClient)
-
-	reply := redisClient.Cmd("LREM", "queue:claimed:"+args[0], -1, args[1])
-	if reply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR lrem redis replied %q", reply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, err)
+		return err
 	}
 
-	delReply := redisClient.Cmd("HDEL", "queue:items:"+args[0], args[1])
-	if delReply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR hdel redis replied %q", delReply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
-	}
+	queueName, eventID := args[0], args[1]
+	claimedKey := queueKey(queueName, "claimed")
+	itemsKey := queueKey(queueName, "items")
+	lockKey := queueKey(queueName, "lock", eventID)
 
-	delReply = redisClient.Cmd("DEL", "queue:lock:"+args[0]+":"+args[1])
-	if delReply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR del redis replied %q", delReply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+	redisClient.Append("LREM", claimedKey, -1, eventID)
+	redisClient.Append("HDEL", itemsKey, eventID)
+	redisClient.Append("DEL", lockKey)
+	var numRemoved int
+	for i := 0; i < 3; i++ {
+		if reply := redisClient.GetReply(); reply.Err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QREM %d: %s", i, reply.Err)
+		// reply from LREM
+		} else if i == 0 {
+			numRemoved, _ = reply.Int()
+		}
 	}
-
-	numRemoved, _ := reply.Int()
 
 	resp.WriteArbitrary(conn, numRemoved)
+	redisPool.Put(redisClient)
+	return nil
 }
 
-func qpushgeneric(client *Client, args []string, direction string) {
-	var err error
-	conn := *client.conn
+func qpushgeneric(client *Client, args []string, pushRight bool) error {
+	conn := client.conn
 	if len(args) < 3 {
-		err = errors.New("ERR missing args")
-		resp.WriteArbitrary(conn, err)
-		return
+		writeErrf(conn, "ERR missing args")
+		return nil
 	}
 
 	redisClient, err := redisPool.Get()
 	if err != nil {
-		return
-	}
-	defer redisPool.Put(redisClient)
-
-	reply := redisClient.Cmd("HSETNX", "queue:items:"+args[0], args[1], args[2])
-	if reply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR redis replied %q", reply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, err)
+		return err
 	}
 
-	created, err := reply.Int()
+	queueName, eventID, contents := args[0], args[1], args[2]
+	itemsKey := queueKey(queueName, "items")
+
+	created, err := redisClient.Cmd("HSETNX", itemsKey, eventID, contents).Int()
 	if err != nil {
-		err = errors.New(fmt.Sprintf("ERR cast failed %q", err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
-	}
-	if created == 0 {
-		err = errors.New(fmt.Sprintf("ERR duplicate event %q", args[1]))
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, err)
+		return fmt.Errorf("QPUSH* HSETNX: %s", err)
+	} else if created == 0 {
+		writeErrf(conn, "ERR duplicate event %q", eventID)
+		redisPool.Put(redisClient)
+		return nil
 	}
 
-	if direction == "left" {
-		reply = redisClient.Cmd("LPUSH", "queue:"+args[0], args[1])
-	} else {
-		reply = redisClient.Cmd("RPUSH", "queue:"+args[0], args[1])
+	unclaimedKey := queueKey(queueName)
+	cmd := "LPUSH"
+	if pushRight {
+		cmd = "RPUSH"
 	}
-	if reply.Err != nil {
-		err = errors.New(fmt.Sprintf("ERR redis replied %q", reply.Err))
-		logger.Printf("%s", err)
-		resp.WriteArbitrary(conn, err)
-		return
+	if err := redisClient.Cmd(cmd, unclaimedKey, eventID).Err; err != nil {
+		writeServerErr(conn, err)
+		return fmt.Errorf("QPUSH* %s: %s", cmd, err)
 	}
 
+	// TODO resp simple string
 	conn.Write([]byte("+OK\r\n"))
+	redisPool.Put(redisClient)
+	return nil
 }
 
-func qstatus(client *Client, args []string) {
-	var err error
-	conn := *client.conn
-	if len(args) > 0 {
-		err = errors.New("wrong number of arguments for 'qstatus' command")
-		resp.WriteArbitrary(conn, err)
-		return
-	}
+func qstatus(client *Client, args []string) error {
+	conn := client.conn
 
 	redisClient, err := redisPool.Get()
 	if err != nil {
-		return
+		writeServerErr(conn, err)
+		return err
 	}
-	defer redisPool.Put(redisClient)
 
 	queueNames, err := getAllQueueNames(redisClient)
 	if err != nil {
-		resp.WriteArbitrary(conn, err)
-		return
+		writeServerErr(conn, err)
+		return err
 	}
 
 	var queueStatuses []string
@@ -248,32 +211,38 @@ func qstatus(client *Client, args []string) {
 		availableCount := 0
 		totalCount := 0
 
-		claimedReply := redisClient.Cmd("LLEN", "queue:claimed:"+queueName)
-		if claimedReply.Err != nil {
-			err = errors.New(fmt.Sprintf("ERR llen redis replied %q", claimedReply.Err))
-			logger.Printf("%s", err)
-			resp.WriteArbitrary(conn, err)
-			return
-		}
-		if claimedReply.Type == redis.IntegerReply {
-			claimedCount, _ = claimedReply.Int()
+		unclaimedKey := queueKey(queueName, "unclaimed")
+		claimedKey := queueKey(queueName, "claimed")
+
+		claimedCount, err = redisClient.Cmd("LLEN", claimedKey).Int()
+		if err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QSTATUS LLEN claimed: %s", err)
 		}
 
-		availableReply := redisClient.Cmd("LLEN", "queue:"+queueName)
-		if availableReply.Err != nil {
-			err = errors.New(fmt.Sprintf("ERR llen redis replied %q", availableReply.Err))
-			logger.Printf("%s", err)
-			resp.WriteArbitrary(conn, err)
-			return
-		}
-		if availableReply.Type == redis.IntegerReply {
-			availableCount, _ = availableReply.Int()
+		availableCount, err = redisClient.Cmd("LLEN", unclaimedKey).Int()
+		if err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
 		}
 
 		totalCount = availableCount + claimedCount
 
-		queueStatuses = append(queueStatuses, queueName+" "+strconv.Itoa(totalCount)+" "+strconv.Itoa(claimedCount))
+		queueStatus := fmt.Sprintf("%s %d %d", queueName, totalCount, claimedCount)
+		queueStatuses = append(queueStatuses, queueStatus)
 	}
 
 	resp.WriteArbitrary(conn, queueStatuses)
+	redisPool.Put(redisClient)
+	return nil
+}
+
+func unknownCommand(client *Client, command string) {
+	writeErrf(client.conn, "ERR unknown command '%s`", command)
+}
+
+func queueKey(queueName string, parts ...string) string {
+	fullParts := make([]string, 0, len(parts) + 2)
+	fullParts = append(fullParts, "queue", "{"+queueName+"}")
+	return strings.Join(fullParts, ":")
 }

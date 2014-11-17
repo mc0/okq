@@ -19,7 +19,7 @@ import (
 type Client struct {
 	clientId string
 	queues   []string
-	conn     *net.Conn
+	conn     net.Conn
 }
 
 const PORT = 4777
@@ -72,7 +72,7 @@ func clientConns(listener net.Listener) chan *Client {
 			clientIdTime := int64(time.Now().UnixNano())
 			clientId := strconv.FormatInt(clientIdTime, 10) + ":" + strconv.Itoa(i)
 			logger.Printf("opened %v (%v)", clientId, conn.RemoteAddr())
-			client := Client{clientId: clientId, conn: &conn}
+			client := Client{clientId: clientId, conn: conn}
 
 			clients[clientId] = &client
 
@@ -91,7 +91,7 @@ func cleanupConn(client *Client) {
 }
 
 func handleConn(client *Client) {
-	conn := *client.conn
+	conn := client.conn
 	defer conn.Close()
 
 	for {
@@ -142,24 +142,27 @@ func handleConn(client *Client) {
 
 		switch command {
 		case "QREGISTER":
-			qregister(client, args)
+			err = qregister(client, args)
 		case "QRPOP":
-			qrpop(client, args)
+			err = qrpop(client, args)
 		case "QLPEEK":
-			qpeekgeneric(client, args, "left")
+			err = qpeekgeneric(client, args, false)
 		case "QRPEEK":
-			qpeekgeneric(client, args, "right")
+			err = qpeekgeneric(client, args, true)
 		case "QREM":
-			qrem(client, args)
+			err = qrem(client, args)
 		case "QLPUSH":
-			qpushgeneric(client, args, "left")
+			err = qpushgeneric(client, args, false)
 		case "QRPUSH":
-			qpushgeneric(client, args, "right")
+			err = qpushgeneric(client, args, true)
 		case "QSTATUS":
-			qstatus(client, args)
+			err = qstatus(client, args)
 		default:
-			err = errors.New(fmt.Sprintf("ERR unknown command '%s'", command))
-			resp.WriteArbitrary(conn, err)
+			unknownCommand(client, command)
+		}
+
+		if err != nil {
+			logger.Println(err)
 		}
 	}
 }

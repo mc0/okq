@@ -10,12 +10,12 @@ Commands
 --------
 
 Redeque is modeled as a left-to-right queue. Clients submit jobs on the left
-side of the queue (with `QLPUSH`, and workers read off the right side (with
+side of the queue (with `QLPUSH`, and consumers read off the right side (with
 `QRPOP`).
 
 ```
      QLPUSH                QRPOP
-client -> [job job job job] -> worker
+client -> [job job job job] -> consumer
 ```
 
 * QREGISTER queue [queue ...]
