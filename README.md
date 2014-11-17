@@ -8,6 +8,16 @@ This allows swapping connecting directly to the service from any redis client.
 
 Commands
 --------
+
+Redeque is modeled as a left-to-right queue. Clients submit jobs on the left
+side of the queue (with `QLPUSH`, and workers read off the right side (with
+`QRPOP`).
+
+```
+     QLPUSH                QRPOP
+client -> [job job job job] -> worker
+```
+
 * QREGISTER queue [queue ...]
 
   optionally register the queues a consumer will pop from
