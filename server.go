@@ -7,6 +7,7 @@ import (
 	"github.com/fzzy/radix/extra/pool"
 	"github.com/fzzy/radix/redis"
 	"github.com/fzzy/radix/redis/resp"
+	"github.com/mc0/redeque/clients"
 	"io"
 	"log"
 	"net"
@@ -16,12 +17,6 @@ import (
 	"time"
 )
 
-type Client struct {
-	clientId string
-	queues   []string
-	conn     net.Conn
-}
-
 const PORT = 4777
 const STALE_CONSUMER_TIMEOUT = 30
 
@@ -29,7 +24,6 @@ var (
 	redisPool   *pool.Pool
 	redisServer = flag.String("localhost", ":6379", "")
 	logger      *log.Logger
-	clients     map[string]*Client
 )
 
 func main() {
@@ -45,53 +39,43 @@ func main() {
 		panic(fmt.Sprintf("pool failed: %q\n", err))
 	}
 
-	clients = make(map[string]*Client)
-
 	logger.Print("ready")
 
-	setupRestoringTimedOutEvents()
-	setupConsumerChecking()
+	incomingConns := make(chan net.Conn)
 
-	conns := clientConns(server)
+	setupRestoringTimedOutEvents()
+	setupConsumers()
+
+	go acceptConns(server, incomingConns)
+
 	for {
-		go handleConn(<-conns)
+		conn := <-incomingConns
+		client := clients.NewClient(conn)
+		if client == nil {
+			conn.Close()
+			continue
+		}
+
+		logger.Printf("serving client %v %v", client.ClientId, client.Conn.RemoteAddr())
+		go serveClient(client)
 	}
 }
 
-func clientConns(listener net.Listener) chan *Client {
-	ch := make(chan *Client)
-	i := 0
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if conn == nil {
-				logger.Printf("couldn't accept: %q", err)
-				continue
-			}
-			i++
-			clientIdTime := int64(time.Now().UnixNano())
-			clientId := strconv.FormatInt(clientIdTime, 10) + ":" + strconv.Itoa(i)
-			logger.Printf("opened %v (%v)", clientId, conn.RemoteAddr())
-			client := Client{clientId: clientId, conn: conn}
-
-			clients[clientId] = &client
-
-			ch <- &client
+func acceptConns(listener net.Listener, incomingConns chan net.Conn) {
+	for {
+		conn, err := listener.Accept()
+		if conn == nil {
+			logger.Printf("couldn't accept: %q", err)
+			continue
 		}
-	}()
-	return ch
+
+		logger.Printf("opened conn %v", conn.RemoteAddr())
+		incomingConns <- conn
+	}
 }
 
-func cleanupConn(client *Client) {
-	logger.Printf("closed %v", client.clientId)
-
-	consumerCleanupChannel <- *client
-
-	delete(clients, client.clientId)
-}
-
-func handleConn(client *Client) {
-	conn := client.conn
+func serveClient(client *clients.Client) {
+	conn := client.Conn
 	defer conn.Close()
 
 	for {
@@ -106,7 +90,11 @@ func handleConn(client *Client) {
 
 		if err != nil {
 			if err == io.EOF {
-				cleanupConn(client)
+				if client.Queues != nil && len(client.Queues) > 0 {
+					clients.QueueCleanupCh <- clients.CleanupRequest{ClientId: client.ClientId, Queues: client.Queues}
+				}
+				client.Close()
+				logger.Printf("closed client %v %v", client.ClientId, client.Conn.RemoteAddr())
 				return
 			}
 			if t, ok := err.(*net.OpError); ok && t.Timeout() {
@@ -171,7 +159,7 @@ func getAllQueueNames(redisClient *redis.Client) ([]string, error) {
 	var queueNames []string
 	var err error
 
-	queueKeysReply := redisClient.Cmd("KEYS", "queue:items:*")
+	queueKeysReply := redisClient.Cmd("KEYS", queueKey("*", "items"))
 	if queueKeysReply.Err != nil {
 		err = errors.New(fmt.Sprintf("ERR keys redis replied %q", queueKeysReply.Err))
 		return queueNames, err
@@ -183,7 +171,8 @@ func getAllQueueNames(redisClient *redis.Client) ([]string, error) {
 	queueKeys, _ := queueKeysReply.List()
 	for i := range queueKeys {
 		keyParts := strings.Split(queueKeys[i], ":")
-		queueNames = append(queueNames, keyParts[2])
+		queueName := keyParts[1]
+		queueNames = append(queueNames, queueName[1:len(queueName)-1])
 	}
 
 	return queueNames, nil

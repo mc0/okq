@@ -1,0 +1,4 @@
+---
+path: github.com/mc0/redeque
+deps:
+    - loc: github.com/fzzy/radix/redis

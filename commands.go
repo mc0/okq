@@ -1,10 +1,11 @@
 package main
 
 import (
-	"io"
 	"fmt"
 	"github.com/fzzy/radix/redis"
 	"github.com/fzzy/radix/redis/resp"
+	"github.com/mc0/redeque/clients"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -18,28 +19,75 @@ func writeErrf(w io.Writer, format string, args ...interface{}) error {
 	return resp.WriteArbitrary(w, err)
 }
 
-func qregister(client *Client, args []string) error {
-	// reset the queue list to what was sent
-	client.queues = args
-	conn := client.conn
+func qregister(client *clients.Client, args []string) error {
+	client.UpdateQueues(args)
 
-	throttledWriteAllConsumers()
+	go throttledWriteAllConsumers()
+
+	conn := client.Conn
 
 	// TODO add WriteSimpleString to resp
 	conn.Write([]byte("+OK\r\n"))
 	return nil
 }
 
-func qpeekgeneric(client *Client, args []string, peekRight bool) error {
-	conn := client.conn
+func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
+	conn := client.Conn
 	if len(args) < 1 {
 		writeErrf(conn, "ERR missing args")
+		return nil
 	}
+
+	queueName := args[0]
+
+	redisClient, err := redisPool.Get()
+	if err != nil {
+		writeServerErr(conn, err)
+		return fmt.Errorf("QPEEK* redisPool.Get(): %s", err)
+	}
+
+	unclaimedKey := queueKey(queueName)
+	offset := "0"
+	if peekRight {
+		offset = "-1"
+	}
+	reply := redisClient.Cmd("LRANGE", unclaimedKey, offset, offset)
+	if reply.Type == redis.NilReply {
+		resp.WriteArbitrary(conn, nil)
+		return nil
+	}
+
+	eventIDs, err := reply.List()
+	if err != nil {
+		resp.WriteArbitrary(conn, nil)
+		return fmt.Errorf("QPEEK* LRANGE: %s", err)
+	}
+
+	if len(eventIDs) == 0 {
+		resp.WriteArbitrary(conn, eventIDs)
+		return nil
+	}
+
+	eventID := eventIDs[0]
+
+	itemsKey := queueKey(queueName, "items")
+	reply = redisClient.Cmd("HGET", itemsKey, eventID)
+
+	var eventRaw string
+	if reply.Type != redis.NilReply {
+		if eventRaw, err = reply.Str(); err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QPEEK* HGET: %s", err)
+		}
+	}
+
+	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
+	redisPool.Put(redisClient)
 	return nil
 }
 
-func qrpop(client *Client, args []string) error {
-	conn := client.conn
+func qrpop(client *clients.Client, args []string) error {
+	conn := client.Conn
 	if len(args) < 1 {
 		writeErrf(conn, "ERR missing args")
 		return nil
@@ -90,7 +138,7 @@ func qrpop(client *Client, args []string) error {
 	}
 
 	itemsKey := queueKey(queueName, "items")
-	reply = redisClient.Cmd("HGET", itemsKey)
+	reply = redisClient.Cmd("HGET", itemsKey, eventID)
 
 	var eventRaw string
 	if reply.Type != redis.NilReply {
@@ -104,14 +152,14 @@ func qrpop(client *Client, args []string) error {
 		qrem(client, []string{queueName, eventID})
 	}
 
-	resp.WriteArbitrary(conn, [2]string{eventID, eventRaw})
+	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
 	redisPool.Put(redisClient)
 	return nil
 }
 
-func qrem(client *Client, args []string) error {
+func qrem(client *clients.Client, args []string) error {
 	var err error
-	conn := client.conn
+	conn := client.Conn
 	if len(args) < 2 {
 		writeErrf(conn, "ERR missing args")
 		return nil
@@ -135,7 +183,7 @@ func qrem(client *Client, args []string) error {
 		if reply := redisClient.GetReply(); reply.Err != nil {
 			writeServerErr(conn, err)
 			return fmt.Errorf("QREM %d: %s", i, reply.Err)
-		// reply from LREM
+			// reply from LREM
 		} else if i == 0 {
 			numRemoved, _ = reply.Int()
 		}
@@ -146,8 +194,8 @@ func qrem(client *Client, args []string) error {
 	return nil
 }
 
-func qpushgeneric(client *Client, args []string, pushRight bool) error {
-	conn := client.conn
+func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
+	conn := client.Conn
 	if len(args) < 3 {
 		writeErrf(conn, "ERR missing args")
 		return nil
@@ -188,8 +236,8 @@ func qpushgeneric(client *Client, args []string, pushRight bool) error {
 	return nil
 }
 
-func qstatus(client *Client, args []string) error {
-	conn := client.conn
+func qstatus(client *clients.Client, args []string) error {
+	conn := client.Conn
 
 	redisClient, err := redisPool.Get()
 	if err != nil {
@@ -211,7 +259,7 @@ func qstatus(client *Client, args []string) error {
 		availableCount := 0
 		totalCount := 0
 
-		unclaimedKey := queueKey(queueName, "unclaimed")
+		unclaimedKey := queueKey(queueName)
 		claimedKey := queueKey(queueName, "claimed")
 
 		claimedCount, err = redisClient.Cmd("LLEN", claimedKey).Int()
@@ -237,12 +285,13 @@ func qstatus(client *Client, args []string) error {
 	return nil
 }
 
-func unknownCommand(client *Client, command string) {
-	writeErrf(client.conn, "ERR unknown command '%s`", command)
+func unknownCommand(client *clients.Client, command string) {
+	writeErrf(client.Conn, "ERR unknown command '%s`", command)
 }
 
 func queueKey(queueName string, parts ...string) string {
-	fullParts := make([]string, 0, len(parts) + 2)
+	fullParts := make([]string, 0, len(parts)+2)
 	fullParts = append(fullParts, "queue", "{"+queueName+"}")
+	fullParts = append(fullParts, parts...)
 	return strings.Join(fullParts, ":")
 }

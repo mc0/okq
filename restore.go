@@ -31,7 +31,7 @@ func validateClaimedEvents() {
 	for i := range queueNames {
 		queueName := queueNames[i]
 		// get the presumably oldest 50 items
-		reply := redisClient.Cmd("LRANGE", "queue:claimed:"+queueName, -50, -1)
+		reply := redisClient.Cmd("LRANGE", queueKey(queueName, "claimed"), -50, -1)
 		if reply.Err != nil {
 			logger.Printf("ERR rpoplpush redis replied %q", reply.Err)
 			continue
@@ -51,7 +51,7 @@ func validateClaimedEvents() {
 
 		var locks []interface{}
 		for i := range eventIDs {
-			locks = append(locks, interface{}("queue:lock:"+queueName+":"+eventIDs[i]))
+			locks = append(locks, interface{}(queueKey(queueName, "lock", eventIDs[i])))
 		}
 
 		reply = redisClient.Cmd("MGET", locks...)
@@ -78,7 +78,7 @@ func validateClaimedEvents() {
 
 func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID string) {
 	// Set a lock for restoring
-	reply := redisClient.Cmd("SET", "queue:restore:"+queueName+":"+eventID, 1, "EX", 10, "NX")
+	reply := redisClient.Cmd("SET", queueKey(queueName, "restore", eventID), 1, "EX", 10, "NX")
 	if reply.Err != nil {
 		logger.Printf("set failed for restoring %q", reply.Err)
 		return
@@ -95,14 +95,14 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 	}
 
 	// Push on the right so it gets action right away
-	reply = redisClient.Cmd("RPUSH", "queue:"+queueName, eventID)
+	reply = redisClient.Cmd("RPUSH", queueKey(queueName), eventID)
 	if reply.Err != nil {
 		logger.Printf("lpush failed for restoring %q", reply.Err)
 		return
 	}
 
 	// Remove the claimed item
-	reply = redisClient.Cmd("LREM", "queue:claimed:"+queueName, 1, eventID)
+	reply = redisClient.Cmd("LREM", queueKey(queueName, "claimed"), 1, eventID)
 	if reply.Err != nil {
 		logger.Printf("lpush failed for restoring %q", reply.Err)
 		return
