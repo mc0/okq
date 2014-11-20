@@ -145,6 +145,8 @@ func serveClient(client *clients.Client) {
 			err = qpushgeneric(client, args, true)
 		case "QSTATUS":
 			err = qstatus(client, args)
+		case "PING":
+			err = ping(client, args)
 		default:
 			unknownCommand(client, command)
 		}

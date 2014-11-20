@@ -285,6 +285,18 @@ func qstatus(client *clients.Client, args []string) error {
 	return nil
 }
 
+func ping(client *clients.Client, args []string) error {
+	conn := client.Conn
+	if len(args) != 0 {
+		writeErrf(conn, "ERR wrong arg count")
+		return nil
+	}
+
+	// TODO add WriteSimpleString to resp
+	conn.Write([]byte("+PONG\r\n"))
+	return nil
+}
+
 func unknownCommand(client *clients.Client, command string) {
 	writeErrf(client.Conn, "ERR unknown command '%s`", command)
 }
