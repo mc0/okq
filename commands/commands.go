@@ -1,14 +1,47 @@
-package main
+// Contains all commands callable by a client
+package commands
 
 import (
 	"fmt"
 	"github.com/fzzy/radix/redis"
 	"github.com/fzzy/radix/redis/resp"
-	"github.com/mc0/redeque/clients"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/mc0/redeque/clients"
+	"github.com/mc0/redeque/db"
 )
+
+var commandMap = map[string]func(*clients.Client, []string) error{
+	"QREGISTER": qregister,
+	"QRPOP":     qrpop,
+	"QLPEEK":    qlpeek,
+	"QRPEEK":    qrpeek,
+	"QREM":      qrem,
+	"QLPUSH":    qlpush,
+	"QRPUSH":    qrpush,
+	"QSTATUS":   qstatus,
+	"PING":      ping,
+}
+
+// All commands take in a client whose command has already been read off the
+// socket, a list of arguments from that command (not including the command name
+// itself), and return an error ONLY if the error is worth logging (disconnect
+// from redis, etc...)
+func Dispatch(client *clients.Client, cmd string, args []string) error {
+	if len(cmd) == 0 {
+		writeErrf(client.Conn, "ERR no command found")
+		return nil
+	}
+
+	cmdFunc, ok := commandMap[cmd]
+	if !ok {
+		return unknown(client, cmd)
+	}
+
+	return cmdFunc(client, args)
+}
 
 func writeServerErr(w io.Writer, err error) error {
 	return writeErrf(w, "ERR server-side: %s", err)
@@ -22,13 +55,22 @@ func writeErrf(w io.Writer, format string, args ...interface{}) error {
 func qregister(client *clients.Client, args []string) error {
 	client.UpdateQueues(args)
 
-	go throttledWriteAllConsumers()
+	// TODO deal with this
+	//go throttledWriteAllConsumers()
 
 	conn := client.Conn
 
 	// TODO add WriteSimpleString to resp
 	conn.Write([]byte("+OK\r\n"))
 	return nil
+}
+
+func qlpeek(client *clients.Client, args []string) error {
+	return qpeekgeneric(client, args, false)
+}
+
+func qrpeek(client *clients.Client, args []string) error {
+	return qpeekgeneric(client, args, true)
 }
 
 func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
@@ -40,13 +82,13 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 
 	queueName := args[0]
 
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		writeServerErr(conn, err)
 		return fmt.Errorf("QPEEK* redisPool.Get(): %s", err)
 	}
 
-	unclaimedKey := queueKey(queueName)
+	unclaimedKey := db.UnclaimedKey(queueName)
 	offset := "0"
 	if peekRight {
 		offset = "-1"
@@ -70,7 +112,7 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 
 	eventID := eventIDs[0]
 
-	itemsKey := queueKey(queueName, "items")
+	itemsKey := db.ItemsKey(queueName)
 	reply = redisClient.Cmd("HGET", itemsKey, eventID)
 
 	var eventRaw string
@@ -82,7 +124,7 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 	}
 
 	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
-	redisPool.Put(redisClient)
+	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -110,14 +152,14 @@ func qrpop(client *clients.Client, args []string) error {
 		unsafe = true
 	}
 
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		writeServerErr(conn, err)
 		return fmt.Errorf("QRPOP redisPool.Get(): %s", err)
 	}
 
-	unclaimedKey := queueKey(queueName)
-	claimedKey := queueKey(queueName, "claimed")
+	unclaimedKey := db.UnclaimedKey(queueName)
+	claimedKey := db.ClaimedKey(queueName)
 	reply := redisClient.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
 	if reply.Type == redis.NilReply {
 		resp.WriteArbitrary(conn, nil)
@@ -130,14 +172,14 @@ func qrpop(client *clients.Client, args []string) error {
 		return fmt.Errorf("QRPOP RPOPLPUSH: %s", err)
 	}
 
-	lockKey := queueKey(queueName, "lock", eventID)
+	lockKey := db.ItemLockKey(queueName, eventID)
 	reply = redisClient.Cmd("SET", lockKey, 1, "EX", strconv.Itoa(expires), "NX")
 	if reply.Err != nil {
 		writeServerErr(conn, reply.Err)
 		return fmt.Errorf("QRPOP SET: %s", reply.Err)
 	}
 
-	itemsKey := queueKey(queueName, "items")
+	itemsKey := db.ItemsKey(queueName)
 	reply = redisClient.Cmd("HGET", itemsKey, eventID)
 
 	var eventRaw string
@@ -153,7 +195,7 @@ func qrpop(client *clients.Client, args []string) error {
 	}
 
 	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
-	redisPool.Put(redisClient)
+	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -164,16 +206,16 @@ func qrem(client *clients.Client, args []string) error {
 		writeErrf(conn, "ERR missing args")
 		return nil
 	}
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		writeServerErr(conn, err)
 		return err
 	}
 
 	queueName, eventID := args[0], args[1]
-	claimedKey := queueKey(queueName, "claimed")
-	itemsKey := queueKey(queueName, "items")
-	lockKey := queueKey(queueName, "lock", eventID)
+	claimedKey := db.ClaimedKey(queueName)
+	itemsKey := db.ItemsKey(queueName)
+	lockKey := db.ItemLockKey(queueName, eventID)
 
 	redisClient.Append("LREM", claimedKey, -1, eventID)
 	redisClient.Append("HDEL", itemsKey, eventID)
@@ -190,8 +232,16 @@ func qrem(client *clients.Client, args []string) error {
 	}
 
 	resp.WriteArbitrary(conn, numRemoved)
-	redisPool.Put(redisClient)
+	db.RedisPool.Put(redisClient)
 	return nil
+}
+
+func qlpush(client *clients.Client, args []string) error {
+	return qpushgeneric(client, args, false)
+}
+
+func qrpush(client *clients.Client, args []string) error {
+	return qpushgeneric(client, args, true)
 }
 
 func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
@@ -201,14 +251,14 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 		return nil
 	}
 
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		writeServerErr(conn, err)
 		return err
 	}
 
 	queueName, eventID, contents := args[0], args[1], args[2]
-	itemsKey := queueKey(queueName, "items")
+	itemsKey := db.ItemsKey(queueName)
 
 	created, err := redisClient.Cmd("HSETNX", itemsKey, eventID, contents).Int()
 	if err != nil {
@@ -216,11 +266,11 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 		return fmt.Errorf("QPUSH* HSETNX: %s", err)
 	} else if created == 0 {
 		writeErrf(conn, "ERR duplicate event %q", eventID)
-		redisPool.Put(redisClient)
+		db.RedisPool.Put(redisClient)
 		return nil
 	}
 
-	unclaimedKey := queueKey(queueName)
+	unclaimedKey := db.UnclaimedKey(queueName)
 	cmd := "LPUSH"
 	if pushRight {
 		cmd = "RPUSH"
@@ -232,20 +282,20 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 
 	// TODO resp simple string
 	conn.Write([]byte("+OK\r\n"))
-	redisPool.Put(redisClient)
+	db.RedisPool.Put(redisClient)
 	return nil
 }
 
 func qstatus(client *clients.Client, args []string) error {
 	conn := client.Conn
 
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		writeServerErr(conn, err)
 		return err
 	}
 
-	queueNames, err := getAllQueueNames(redisClient)
+	queueNames, err := db.AllQueueNames(redisClient)
 	if err != nil {
 		writeServerErr(conn, err)
 		return err
@@ -259,8 +309,8 @@ func qstatus(client *clients.Client, args []string) error {
 		availableCount := 0
 		totalCount := 0
 
-		unclaimedKey := queueKey(queueName)
-		claimedKey := queueKey(queueName, "claimed")
+		unclaimedKey := db.UnclaimedKey(queueName)
+		claimedKey := db.ClaimedKey(queueName)
 
 		claimedCount, err = redisClient.Cmd("LLEN", claimedKey).Int()
 		if err != nil {
@@ -281,7 +331,7 @@ func qstatus(client *clients.Client, args []string) error {
 	}
 
 	resp.WriteArbitrary(conn, queueStatuses)
-	redisPool.Put(redisClient)
+	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -297,13 +347,7 @@ func ping(client *clients.Client, args []string) error {
 	return nil
 }
 
-func unknownCommand(client *clients.Client, command string) {
+func unknown(client *clients.Client, command string) error {
 	writeErrf(client.Conn, "ERR unknown command '%s`", command)
-}
-
-func queueKey(queueName string, parts ...string) string {
-	fullParts := make([]string, 0, len(parts)+2)
-	fullParts = append(fullParts, "queue", "{"+queueName+"}")
-	fullParts = append(fullParts, parts...)
-	return strings.Join(fullParts, ":")
+	return nil
 }

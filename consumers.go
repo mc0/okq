@@ -1,9 +1,11 @@
 package main
 
 import (
-	"github.com/mc0/redeque/clients"
 	"strconv"
 	"time"
+
+	"github.com/mc0/redeque/clients"
+	"github.com/mc0/redeque/db"
 )
 
 var (
@@ -86,16 +88,18 @@ func writeAllConsumers(clients map[string]*clients.Client) {
 
 	logger.Printf("writeAllConsumers %q", consumers)
 
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		logger.Printf("failed to get redis conn %q", err)
 		return
 	}
-	defer redisPool.Put(redisClient)
+	// TODO don't defer this
+	defer db.RedisPool.Put(redisClient)
 
 	for k, members := range consumers {
+		consumersKey := db.ConsumersKey(k)
 		var args []interface{}
-		args = append(args, queueKey(k, "consumers"))
+		args = append(args, consumersKey)
 		for i := range members {
 			args = append(args, interface{}(members[i]))
 		}
@@ -107,7 +111,7 @@ func writeAllConsumers(clients map[string]*clients.Client) {
 
 		// TODO: it seems likely that this could not run in abnormal conditions, fix!
 		// remove any stale consumers
-		reply = redisClient.Cmd("ZREMRANGEBYSCORE", queueKey(k, "consumers"), "-inf", staleTimestamp)
+		reply = redisClient.Cmd("ZREMRANGEBYSCORE", consumersKey, "-inf", staleTimestamp)
 		if reply.Err != nil {
 			logger.Printf("zrembyscore failed %q", reply.Err)
 		}
@@ -124,7 +128,7 @@ func cleanupQueues() {
 			continue
 		}
 
-		redisClient, err := redisPool.Get()
+		redisClient, err := db.RedisPool.Get()
 		if err != nil {
 			logger.Printf("failed to get redis conn %q", err)
 			return
@@ -132,14 +136,15 @@ func cleanupQueues() {
 
 		for j := range queues {
 			queue := queues[j]
+			consumersKey := db.ConsumersKey(queue)
 
-			reply := redisClient.Cmd("ZREM", queueKey(queue, "consumers"), clientId)
+			reply := redisClient.Cmd("ZREM", consumersKey, clientId)
 			if reply.Err != nil {
 				logger.Printf("zrem failed %q", reply.Err)
 				continue
 			}
 		}
 
-		redisPool.Put(redisClient)
+		db.RedisPool.Put(redisClient)
 	}
 }

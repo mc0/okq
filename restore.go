@@ -3,6 +3,8 @@ package main
 import (
 	"github.com/fzzy/radix/redis"
 	"time"
+
+	"github.com/mc0/redeque/db"
 )
 
 func setupRestoringTimedOutEvents() {
@@ -19,19 +21,21 @@ func restoreTimedOutEvents() {
 }
 
 func validateClaimedEvents() {
-	redisClient, err := redisPool.Get()
+	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		logger.Printf("ERR failed to get redis conn %q", err)
 		return
 	}
-	defer redisPool.Put(redisClient)
+	// TODO don't defer this
+	defer db.RedisPool.Put(redisClient)
 
-	queueNames, err := getAllQueueNames(redisClient)
+	queueNames, err := db.AllQueueNames(redisClient)
 
 	for i := range queueNames {
 		queueName := queueNames[i]
+		claimedKey := db.ClaimedKey(queueName)
 		// get the presumably oldest 50 items
-		reply := redisClient.Cmd("LRANGE", queueKey(queueName, "claimed"), -50, -1)
+		reply := redisClient.Cmd("LRANGE", claimedKey, -50, -1)
 		if reply.Err != nil {
 			logger.Printf("ERR rpoplpush redis replied %q", reply.Err)
 			continue
@@ -51,7 +55,8 @@ func validateClaimedEvents() {
 
 		var locks []interface{}
 		for i := range eventIDs {
-			locks = append(locks, interface{}(queueKey(queueName, "lock", eventIDs[i])))
+			lockKey := db.ItemLockKey(queueName, eventIDs[i])
+			locks = append(locks, interface{}(lockKey))
 		}
 
 		reply = redisClient.Cmd("MGET", locks...)
@@ -76,9 +81,12 @@ func validateClaimedEvents() {
 	}
 }
 
+// TODO pipeline commands in here. Also, what's the point of setting the restore
+// key?
 func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID string) {
 	// Set a lock for restoring
-	reply := redisClient.Cmd("SET", queueKey(queueName, "restore", eventID), 1, "EX", 10, "NX")
+	restoreKey := db.ItemRestoreKey(queueName, eventID)
+	reply := redisClient.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
 	if reply.Err != nil {
 		logger.Printf("set failed for restoring %q", reply.Err)
 		return
@@ -95,14 +103,16 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 	}
 
 	// Push on the right so it gets action right away
-	reply = redisClient.Cmd("RPUSH", queueKey(queueName), eventID)
+	unclaimedKey := db.UnclaimedKey(queueName)
+	reply = redisClient.Cmd("RPUSH", unclaimedKey, eventID)
 	if reply.Err != nil {
 		logger.Printf("lpush failed for restoring %q", reply.Err)
 		return
 	}
 
 	// Remove the claimed item
-	reply = redisClient.Cmd("LREM", queueKey(queueName, "claimed"), 1, eventID)
+	claimedKey := db.ClaimedKey(queueName)
+	reply = redisClient.Cmd("LREM", claimedKey, 1, eventID)
 	if reply.Err != nil {
 		logger.Printf("lpush failed for restoring %q", reply.Err)
 		return
