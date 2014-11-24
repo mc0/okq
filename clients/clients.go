@@ -8,48 +8,32 @@ import (
 )
 
 var (
-	CallCh         = make(chan func())
-	QueueCleanupCh = make(chan CleanupRequest)
-	Active         = make(map[string]*Client)
+	callCh         = make(chan func())
+	activeClients  = make(map[string]*Client)
 	clientsLastID  = 0
 )
 
 func init() {
-	go listenForClientsRequests()
-}
-
-type ClientsRequest struct {
-	client   *Client
-	name     string
-	value    interface{}
-	respChan chan ClientsResponse
-}
-
-// TODO: move this back to consumers once/if it's a package
-type CleanupRequest struct {
-	ClientId string
-	Queues   []string
-}
-
-type ClientsResponse struct {
-	client  *Client
-	request ClientsRequest
-	result  string
-	value   interface{}
+	go func(){
+		for call := range callCh {
+			call()
+		}
+	}()
+	go consumersUpdater()
 }
 
 type Client struct {
 	ClientId string
-	Queues   []string
+	queues   []string
 	Conn     net.Conn
 }
 
 func NewClient(conn net.Conn) *Client {
-	client := &Client{Conn: conn, Queues: []string{}}
+	client := &Client{Conn: conn, queues: []string{}}
 
 	respChan := make(chan *Client, 1)
 
-	CallCh <- func() {
+	callCh <- func() {
 		client.setupInitial()
 		respChan <- client
 	}
@@ -64,59 +48,29 @@ func (client *Client) setupInitial() {
 	client.ClientId = clientId
 
 	// add it to the clients map
-	Active[clientId] = client
-}
-
-func (client *Client) UpdateQueues(queues []string) error {
-	var differences []string
-
-	if len(client.Queues) != 0 {
-		differences = differenceStrings(queues, client.Queues)
-	}
-
-	CallCh <- func() {
-		client.Queues = queues
-	}
-
-	if differences != nil {
-		QueueCleanupCh <- CleanupRequest{Queues: differences, ClientId: client.ClientId}
-	}
-
-	return nil
+	activeClients[clientId] = client
 }
 
 func (client *Client) Close() {
-	CallCh <- func() {
-		delete(Active, client.ClientId)
+	callCh <- func() {
+		delete(activeClients, client.ClientId)
 	}
 
+	client.UpdateQueues([]string{})
 	client.Conn.Close()
 }
 
-func listenForClientsRequests() {
-	for call := range CallCh {
-		call()
-	}
-}
-
-func differenceStrings(s1 []string, s2 []string) []string {
-	differences := []string{}
-	allValues := map[string]int{}
-
+// Returns all strings that are in s1 but not in s2 (i.e. subtracts s2 from s1)
+func stringSliceSub(s1, s2 []string) []string {
+	ret := make([]string, 0, len(s1))
+outer:
 	for _, s1Val := range s1 {
-		allValues[s1Val] = 1
-	}
-	for _, s2Val := range s2 {
-		allValues[s2Val] = allValues[s2Val] + 1
-	}
-
-	for value, instances := range allValues {
-		if instances != 1 {
-			continue
+		for _, s2Val := range s2 {
+			if s1Val == s2Val {
+				continue outer
+			}
 		}
-
-		differences = append(differences, value)
+		ret = append(ret, s1Val)
 	}
-
-	return differences
+	return ret
 }

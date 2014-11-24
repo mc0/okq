@@ -53,10 +53,11 @@ func writeErrf(w io.Writer, format string, args ...interface{}) error {
 }
 
 func qregister(client *clients.Client, args []string) error {
-	client.UpdateQueues(args)
-
-	// TODO deal with this
-	//go throttledWriteAllConsumers()
+	err := client.UpdateQueues(args)
+	if err != nil {
+		writeServerErr(client.Conn, err)
+		return err
+	}
 
 	conn := client.Conn
 

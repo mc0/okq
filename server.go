@@ -37,7 +37,6 @@ func main() {
 	incomingConns := make(chan net.Conn)
 
 	setupRestoringTimedOutEvents()
-	setupConsumers()
 
 	go acceptConns(server, incomingConns)
 
@@ -84,9 +83,6 @@ func serveClient(client *clients.Client) {
 		// TODO move most of the rest of this into commands as well
 		if err != nil {
 			if err == io.EOF {
-				if client.Queues != nil && len(client.Queues) > 0 {
-					clients.QueueCleanupCh <- clients.CleanupRequest{ClientId: client.ClientId, Queues: client.Queues}
-				}
 				client.Close()
 				logger.Printf("closed client %v %v", client.ClientId, client.Conn.RemoteAddr())
 				return
