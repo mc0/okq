@@ -8,13 +8,13 @@ import (
 )
 
 var (
-	callCh         = make(chan func())
-	activeClients  = make(map[string]*Client)
-	clientsLastID  = 0
+	callCh        = make(chan func())
+	activeClients = make(map[string]*Client)
+	clientsLastID = 0
 )
 
 func init() {
-	go func(){
+	go func() {
 		for call := range callCh {
 			call()
 		}

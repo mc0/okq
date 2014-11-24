@@ -71,7 +71,7 @@ func updateConsumers() error {
 			respChan <- err
 			return
 		}
-		
+
 		for queueName, args := range consumersArgs {
 			if err := redisClient.Cmd("ZADD", args...).Err; err != nil {
 				respChan <- err
