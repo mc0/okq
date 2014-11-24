@@ -218,17 +218,36 @@ func qrem(client *clients.Client, args []string) error {
 	itemsKey := db.ItemsKey(queueName)
 	lockKey := db.ItemLockKey(queueName, eventID)
 
-	redisClient.Append("LREM", claimedKey, -1, eventID)
-	redisClient.Append("HDEL", itemsKey, eventID)
-	redisClient.Append("DEL", lockKey)
 	var numRemoved int
-	for i := 0; i < 3; i++ {
-		if reply := redisClient.GetReply(); reply.Err != nil {
+	numRemoved, err = redisClient.Cmd("LREM", claimedKey, -1, eventID).Int()
+	if err != nil {
+		writeServerErr(conn, err)
+		return err
+	}
+
+	// If we didn't removed the eventID from the claimed events we see if it can
+	// be found in unclaimed. We only do this in the uncommon case that the
+	// eventID isn't in claimed since unclaimed can be really large, so LREM is
+	// slow on it
+	if numRemoved == 0 {
+		unclaimedKey := db.UnclaimedKey(queueName)
+		numRemoved, err = redisClient.Cmd("LREM", unclaimedKey, -1, eventID).Int()
+		if err != nil {
 			writeServerErr(conn, err)
-			return fmt.Errorf("QREM %d: %s", i, reply.Err)
-			// reply from LREM
-		} else if i == 0 {
-			numRemoved, _ = reply.Int()
+			return err
+		}
+	}
+
+	// We only remove the object data itself if the eventID was actually removed
+	// from something
+	if numRemoved > 0 {
+		redisClient.Append("HDEL", itemsKey, eventID)
+		redisClient.Append("DEL", lockKey)
+		for i := 0; i < 2; i++ {
+			if reply := redisClient.GetReply(); reply.Err != nil {
+				writeServerErr(conn, err)
+				return fmt.Errorf("QREM %d: %s", i, reply.Err)
+			}
 		}
 	}
 
