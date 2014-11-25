@@ -1,8 +1,10 @@
 package clients
 
 import (
+	"github.com/mediocregopher/pubsubch"
 	"time"
 
+	"github.com/mc0/redeque/config"
 	"github.com/mc0/redeque/db"
 	"github.com/mc0/redeque/log"
 )
@@ -19,6 +21,9 @@ const (
 // Only need a buffer of size one. If two things are writing to the buffer, they
 // both want consumers updated
 var updateConsumersCh = make(chan struct{}, 1)
+
+// Similar to updateConsumersCh: need to know of queue changes to update subs
+var updateNotifyCh = make(chan struct{}, 1)
 
 func consumersUpdater() {
 	tick := time.Tick(10 * time.Second)
@@ -38,11 +43,137 @@ func consumersUpdater() {
 	}
 }
 
+func notifyConsumersEvents() {
+	for {
+		subConn, err := pubsubch.DialTimeout(config.RedisAddr, 2500*time.Millisecond)
+		if err != nil {
+			log.L.Printf("notifyConsumers error connecting: %v", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		// lets proxy notifyCh so that we can close it
+		// this lets us control when this goroutine finishes
+		updateCh := make(chan struct{}, 1)
+		go notifyUpdateSubscriptions(subConn, updateCh)
+
+	selectLoop:
+		for {
+			select {
+			// pass the notification on to our internal chan for processing
+			case s := <-updateNotifyCh:
+				select {
+				case updateCh <- s:
+				default:
+				}
+			// listen for any publishes and fan them out to each client
+			case pub, ok := <-subConn.PublishCh:
+				if !ok {
+					break selectLoop
+				}
+				pubQueueName, err := db.GetQueueNameFromKey(pub.Channel)
+				if err != nil {
+					log.L.Printf("notifyConsumer got unknown channel %v: %v", pub.Channel, err)
+					continue
+				}
+				callCh <- func() {
+					for _, client := range activeClients {
+						for _, queueName := range client.queues {
+							if queueName == pubQueueName {
+								client.Notify(pubQueueName)
+							}
+						}
+					}
+				}
+			}
+		}
+
+		close(updateCh)
+		subConn.Close()
+	}
+}
+
+func notifyUpdateSubscriptions(subConn *pubsubch.PubSubCh, updateCh chan struct{}) {
+	lastSubscribedQueues := []string{}
+	// ensure we run immediately by filling the channel
+	select {
+	case updateCh <- struct{}{}:
+	default:
+	}
+
+	for {
+		_, ok := <-updateCh
+		if !ok {
+			break
+		}
+
+		queueNames := getConsumersQueues()
+		queuesAdded := stringSliceSub(queueNames, lastSubscribedQueues)
+		queuesRemoved := stringSliceSub(lastSubscribedQueues, queueNames)
+
+		lastSubscribedQueues = queueNames
+
+		if len(queuesRemoved) != 0 {
+			var redisChannels []string
+			for i := range queuesRemoved {
+				channelName := db.QueueChannelNameKey(queuesRemoved[i])
+				redisChannels = append(redisChannels, channelName)
+			}
+
+			log.L.Debugf("unsubscribing from %v", redisChannels)
+			if _, err := subConn.Unsubscribe(redisChannels...); err != nil {
+				log.L.Printf("notifyConsumers error unsubscribing: %v", err)
+				break
+			}
+		}
+
+		if len(queuesAdded) != 0 {
+			var redisChannels []string
+			for i := range queuesAdded {
+				channelName := db.QueueChannelNameKey(queuesAdded[i])
+				redisChannels = append(redisChannels, channelName)
+			}
+
+			log.L.Debugf("subscribing to %v", redisChannels)
+			if _, err := subConn.Subscribe(redisChannels...); err != nil {
+				log.L.Printf("notifyConsumers error subscribing: %v", err)
+				break
+			}
+		}
+	}
+
+	subConn.Close()
+}
+
+// Force the active consumers to get updated in redis. This can affects the
+// results of the QSTATUS command.
 func ForceUpdateConsumers() {
 	select {
 	case updateConsumersCh <- struct{}{}:
 	default:
 	}
+}
+
+func getConsumersQueues() []string {
+	respChan := make(chan []string, 1)
+	callCh <- func() {
+		queueMap := map[string]bool{}
+
+		for _, client := range activeClients {
+			for _, queueName := range client.queues {
+				queueMap[queueName] = true
+			}
+		}
+
+		queueNames := make([]string, 0, len(queueMap))
+		for k := range queueMap {
+			queueNames = append(queueNames, k)
+		}
+
+		respChan <- queueNames
+	}
+
+	return <-respChan
 }
 
 func updateConsumers() error {
@@ -98,6 +229,10 @@ func (client *Client) UpdateQueues(queues []string) error {
 	respChan := make(chan error)
 	callCh <- func() {
 		client.queues = queues
+		select {
+		case updateNotifyCh <- struct{}{}:
+		default:
+		}
 		redisClient, err := db.RedisPool.Get()
 		if err != nil {
 			respChan <- err

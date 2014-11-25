@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mc0/redeque/clients"
 	"github.com/mc0/redeque/db"
@@ -21,6 +22,7 @@ var commandMap = map[string]func(*clients.Client, []string) error{
 	"QREM":      qrem,
 	"QLPUSH":    qlpush,
 	"QRPUSH":    qrpush,
+	"QNOTIFY":   qnotify,
 	"QSTATUS":   qstatus,
 	"PING":      ping,
 }
@@ -300,8 +302,67 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 		return fmt.Errorf("QPUSH* %s: %s", cmd, err)
 	}
 
+	channelName := db.QueueChannelNameKey(queueName)
+	err = redisClient.Cmd("PUBLISH", channelName, eventID).Err
+
 	// TODO resp simple string
 	conn.Write([]byte("+OK\r\n"))
+	db.RedisPool.Put(redisClient)
+	return err
+}
+
+func qnotify(client *clients.Client, args []string) error {
+	conn := client.Conn
+	if len(args) < 1 {
+		writeErrf(conn, "ERR missing args")
+		return nil
+	}
+
+	timeout, err := strconv.Atoi(args[len(args)-1])
+	if err != nil {
+		writeErrf(conn, "ERR bad timeout value: %s", err)
+		return nil
+	}
+
+	redisClient, err := db.RedisPool.Get()
+	if err != nil {
+		writeServerErr(conn, err)
+		return err
+	}
+
+	// ensure the NotifyCh is empty before waiting
+	queueName := ""
+	client.DrainNotifCh()
+
+	// check to see if we have any events in the registered queues
+	queueNames := client.GetQueues()
+	for i := range queueNames {
+		unclaimedKey := db.UnclaimedKey(queueNames[i])
+
+		unclaimedCount, err := redisClient.Cmd("LLEN", unclaimedKey).Int()
+		if err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
+		}
+		if unclaimedCount > 0 {
+			queueName = queueNames[i]
+			break
+		}
+	}
+
+	if len(queueName) == 0 {
+		select {
+		case <-time.After(time.Duration(timeout) * time.Second):
+		case queueName = <-client.NotifyCh:
+		}
+	}
+
+	if len(queueName) != 0 {
+		resp.WriteArbitrary(conn, queueName)
+	} else {
+		resp.WriteArbitrary(conn, nil)
+	}
+
 	db.RedisPool.Put(redisClient)
 	return nil
 }

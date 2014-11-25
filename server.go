@@ -97,7 +97,7 @@ outer:
 			}
 		}
 
-		log.L.Print(client.Sprintf("%s %#v", command, args))
+		log.L.Debug(client.Sprintf("%s %#v", command, args))
 		if err = commands.Dispatch(client, command, args); err != nil {
 			log.L.Print(client.Sprintf("command %s %#v err:", command, args, err))
 		}

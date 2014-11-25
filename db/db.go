@@ -3,6 +3,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"github.com/fzzy/radix/extra/pool"
 	"github.com/fzzy/radix/redis"
@@ -77,4 +78,23 @@ func ItemLockKey(queueName, eventID string) string {
 
 func ItemRestoreKey(queueName, eventID string) string {
 	return queueKey(queueName, "restore", eventID)
+}
+
+func QueueChannelNameKey(queueName string) string {
+	return queueKey(queueName)
+}
+
+func GetQueueNameFromKey(key string) (string, error) {
+	parts := strings.Split(key, ":")
+	if len(parts) < 2 {
+		return "", errors.New("not enough string parts")
+	}
+	if len(parts[1]) < 3 {
+		return "", errors.New("key invalid due to 2nd part")
+	}
+
+	queueNamePart := parts[1]
+	queueName := queueNamePart[1 : len(queueNamePart)-1]
+
+	return queueName, nil
 }
