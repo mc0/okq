@@ -20,16 +20,18 @@ func init() {
 		}
 	}()
 	go consumersUpdater()
+	go notifyConsumersEvents()
 }
 
 type Client struct {
 	ClientId string
 	queues   []string
 	Conn     net.Conn
+	NotifyCh chan string
 }
 
 func NewClient(conn net.Conn) *Client {
-	client := &Client{Conn: conn, queues: []string{}}
+	client := &Client{Conn: conn, queues: []string{}, NotifyCh: make(chan string, 1)}
 
 	respChan := make(chan *Client, 1)
 
@@ -49,6 +51,31 @@ func (client *Client) setupInitial() {
 
 	// add it to the clients map
 	activeClients[clientId] = client
+}
+
+func (client *Client) GetQueues() []string {
+	respChan := make(chan []string)
+	callCh <- func() {
+		queuesCopy := make([]string, len(client.queues))
+		copy(queuesCopy, client.queues)
+		respChan <- queuesCopy
+	}
+
+	return <-respChan
+}
+
+func (client *Client) Notify(queueName string) {
+	select {
+	case client.NotifyCh <- queueName:
+	default:
+	}
+}
+
+func (client *Client) DrainNotifCh() {
+	select {
+	case <-client.NotifyCh:
+	default:
+	}
 }
 
 func (client *Client) Close() {
