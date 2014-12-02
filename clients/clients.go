@@ -71,18 +71,3 @@ func (client *Client) Sprintf(format string, args ...interface{}) error {
 
 	return fmt.Errorf(fullFormat, fullArgs...)
 }
-
-// Returns all strings that are in s1 but not in s2 (i.e. subtracts s2 from s1)
-func stringSliceSub(s1, s2 []string) []string {
-	ret := make([]string, 0, len(s1))
-outer:
-	for _, s1Val := range s1 {
-		for _, s2Val := range s2 {
-			if s1Val == s2Val {
-				continue outer
-			}
-		}
-		ret = append(ret, s1Val)
-	}
-	return ret
-}
