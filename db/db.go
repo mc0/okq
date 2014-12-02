@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mc0/redeque/config"
+	"github.com/mc0/redeque/log"
 )
 
 // A pool of redis connections which can be read from asynchronously by anyone
@@ -16,6 +17,7 @@ var RedisPool *pool.Pool
 
 func init() {
 	var err error
+	log.L.Printf("connecting to redis at %s", config.RedisAddr)
 	RedisPool, err = pool.NewPool("tcp", config.RedisAddr, 50)
 	if err != nil {
 		panic(err)

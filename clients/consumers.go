@@ -1,10 +1,10 @@
 package clients
 
 import (
-	"log"
 	"time"
 
 	"github.com/mc0/redeque/db"
+	"github.com/mc0/redeque/log"
 )
 
 // consumers are clients which have qregistered themselves as consuming some set
@@ -28,9 +28,9 @@ func consumersUpdater() {
 		case <-updateConsumersCh:
 		}
 
+		log.L.Debug("updating consumers")
 		if err := updateConsumers(); err != nil {
-			// TODO use our logger
-			log.Printf("updating consumers: %s", err)
+			log.L.Printf("updating consumers: %s", err)
 		}
 
 		// We sleep as a form of rate-limiting
@@ -121,4 +121,3 @@ func (client *Client) UpdateQueues(queues []string) error {
 
 	return <-respChan
 }
-

@@ -17,10 +17,10 @@ import (
 func main() {
 	server, err := net.Listen("tcp", config.ListenAddr)
 	if server == nil {
-		panic(fmt.Sprintf("couldn't start listening: %q\n", err))
+		log.L.Fatal(err)
 	}
 
-	log.L.Print("ready")
+	log.L.Printf("listening on %s", config.ListenAddr)
 
 	incomingConns := make(chan net.Conn)
 
@@ -31,12 +31,8 @@ func main() {
 	for {
 		conn := <-incomingConns
 		client := clients.NewClient(conn)
-		if client == nil {
-			conn.Close()
-			continue
-		}
 
-		log.L.Printf("serving client %v %v", client.ClientId, client.Conn.RemoteAddr())
+		log.L.Debug(client.Sprintf("serving"))
 		go serveClient(client)
 	}
 }
@@ -48,8 +44,6 @@ func acceptConns(listener net.Listener, incomingConns chan net.Conn) {
 			log.L.Printf("couldn't accept: %q", err)
 			continue
 		}
-
-		log.L.Printf("opened conn %v", conn.RemoteAddr())
 		incomingConns <- conn
 	}
 }
@@ -58,6 +52,7 @@ func serveClient(client *clients.Client) {
 	conn := client.Conn
 	defer conn.Close()
 
+outer:
 	for {
 		err := conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 		if err != nil {
@@ -68,11 +63,10 @@ func serveClient(client *clients.Client) {
 		var command string
 		var args []string
 
-		// TODO move most of the rest of this into commands as well
 		if err != nil {
 			if err == io.EOF {
 				client.Close()
-				log.L.Printf("closed client %v %v", client.ClientId, client.Conn.RemoteAddr())
+				log.L.Debug(client.Sprintf("closed"))
 				return
 			}
 			if t, ok := err.(*net.OpError); ok && t.Timeout() {
@@ -85,23 +79,27 @@ func serveClient(client *clients.Client) {
 
 		parts, err := m.Array()
 		if err != nil {
-			log.L.Printf("error parsing message to array: %q", err)
-			continue
+			log.L.Debug(client.Sprintf("error parsing to array: %q", err))
+			resp.WriteArbitrary(conn, fmt.Errorf("ERR invalid command"))
+			continue outer
 		}
 		for i := range parts {
 			val, err := parts[i].Str()
 			if err != nil {
-				continue
+				log.L.Debug(client.Sprintf("invalid command part %#v: %s", parts[i], err))
+				resp.WriteArbitrary(conn, fmt.Errorf("ERR invalid command"))
+				continue outer
 			}
 			if i == 0 {
 				command = strings.ToUpper(val)
-				continue
+			} else {
+				args = append(args, val)
 			}
-			args = append(args, val)
 		}
 
+		log.L.Print(client.Sprintf("%s %#v", command, args))
 		if err = commands.Dispatch(client, command, args); err != nil {
-			log.L.Println(err)
+			log.L.Print(client.Sprintf("command %s %#v err:", command, args, err))
 		}
 	}
 }

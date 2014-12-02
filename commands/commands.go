@@ -368,6 +368,6 @@ func ping(client *clients.Client, args []string) error {
 }
 
 func unknown(client *clients.Client, command string) error {
-	writeErrf(client.Conn, "ERR unknown command '%s`", command)
+	writeErrf(client.Conn, "ERR unknown command %s", command)
 	return nil
 }

@@ -22,6 +22,8 @@ func restoreTimedOutEvents() {
 }
 
 func validateClaimedEvents() {
+	log.L.Debug("validating claimed events")
+
 	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		log.L.Printf("ERR failed to get redis conn %q", err)

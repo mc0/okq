@@ -60,6 +60,18 @@ func (client *Client) Close() {
 	client.Conn.Close()
 }
 
+// Returns the given formatted string with a little extra info about the client
+// prepended to it
+func (client *Client) Sprintf(format string, args ...interface{}) error {
+	fullFormat := "client %v %v - " + format
+	fullArgs := make([]interface{}, 0, len(args)+2)
+	fullArgs = append(fullArgs, client.ClientId)
+	fullArgs = append(fullArgs, client.Conn.RemoteAddr())
+	fullArgs = append(fullArgs, args...)
+
+	return fmt.Errorf(fullFormat, fullArgs...)
+}
+
 // Returns all strings that are in s1 but not in s2 (i.e. subtracts s2 from s1)
 func stringSliceSub(s1, s2 []string) []string {
 	ret := make([]string, 0, len(s1))
