@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mc0/redeque/db"
+	"github.com/mc0/redeque/log"
 )
 
 func setupRestoringTimedOutEvents() {
@@ -23,7 +24,7 @@ func restoreTimedOutEvents() {
 func validateClaimedEvents() {
 	redisClient, err := db.RedisPool.Get()
 	if err != nil {
-		logger.Printf("ERR failed to get redis conn %q", err)
+		log.L.Printf("ERR failed to get redis conn %q", err)
 		return
 	}
 	// TODO don't defer this
@@ -37,7 +38,7 @@ func validateClaimedEvents() {
 		// get the presumably oldest 50 items
 		reply := redisClient.Cmd("LRANGE", claimedKey, -50, -1)
 		if reply.Err != nil {
-			logger.Printf("ERR rpoplpush redis replied %q", reply.Err)
+			log.L.Printf("ERR rpoplpush redis replied %q", reply.Err)
 			continue
 		}
 		if reply.Type == redis.NilReply {
@@ -61,7 +62,7 @@ func validateClaimedEvents() {
 
 		reply = redisClient.Cmd("MGET", locks...)
 		if reply.Err != nil {
-			logger.Printf("ERR rpoplpush redis replied %q", reply.Err)
+			log.L.Printf("ERR rpoplpush redis replied %q", reply.Err)
 			continue
 		}
 		if reply.Type == redis.NilReply {
@@ -88,17 +89,17 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 	restoreKey := db.ItemRestoreKey(queueName, eventID)
 	reply := redisClient.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
 	if reply.Err != nil {
-		logger.Printf("set failed for restoring %q", reply.Err)
+		log.L.Printf("set failed for restoring %q", reply.Err)
 		return
 	}
 	if reply.Type == redis.NilReply {
-		logger.Print("set returned nil reply; must be restored already")
+		log.L.Print("set returned nil reply; must be restored already")
 		return
 	}
 
 	reply = redisClient.Cmd("MULTI")
 	if reply.Err != nil {
-		logger.Printf("multi failed for restoring %q", reply.Err)
+		log.L.Printf("multi failed for restoring %q", reply.Err)
 		return
 	}
 
@@ -106,7 +107,7 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 	unclaimedKey := db.UnclaimedKey(queueName)
 	reply = redisClient.Cmd("RPUSH", unclaimedKey, eventID)
 	if reply.Err != nil {
-		logger.Printf("lpush failed for restoring %q", reply.Err)
+		log.L.Printf("lpush failed for restoring %q", reply.Err)
 		return
 	}
 
@@ -114,13 +115,13 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 	claimedKey := db.ClaimedKey(queueName)
 	reply = redisClient.Cmd("LREM", claimedKey, 1, eventID)
 	if reply.Err != nil {
-		logger.Printf("lpush failed for restoring %q", reply.Err)
+		log.L.Printf("lpush failed for restoring %q", reply.Err)
 		return
 	}
 
 	reply = redisClient.Cmd("EXEC")
 	if reply.Err != nil {
-		logger.Printf("exec failed for restoring %q", reply.Err)
+		log.L.Printf("exec failed for restoring %q", reply.Err)
 		return
 	}
 }

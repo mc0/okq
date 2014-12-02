@@ -1,38 +1,26 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"github.com/fzzy/radix/redis/resp"
 	"io"
-	"log"
 	"net"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mc0/redeque/clients"
 	"github.com/mc0/redeque/commands"
-)
-
-const PORT = 4777
-const STALE_CONSUMER_TIMEOUT = 30
-
-var (
-	redisServer = flag.String("localhost", ":6379", "")
-	logger      *log.Logger
+	"github.com/mc0/redeque/config"
+	"github.com/mc0/redeque/log"
 )
 
 func main() {
-	logger = log.New(os.Stdout, "", log.Ltime|log.Lshortfile)
-
-	server, err := net.Listen("tcp", ":"+strconv.Itoa(PORT))
+	server, err := net.Listen("tcp", config.ListenAddr)
 	if server == nil {
 		panic(fmt.Sprintf("couldn't start listening: %q\n", err))
 	}
 
-	logger.Print("ready")
+	log.L.Print("ready")
 
 	incomingConns := make(chan net.Conn)
 
@@ -48,7 +36,7 @@ func main() {
 			continue
 		}
 
-		logger.Printf("serving client %v %v", client.ClientId, client.Conn.RemoteAddr())
+		log.L.Printf("serving client %v %v", client.ClientId, client.Conn.RemoteAddr())
 		go serveClient(client)
 	}
 }
@@ -57,11 +45,11 @@ func acceptConns(listener net.Listener, incomingConns chan net.Conn) {
 	for {
 		conn, err := listener.Accept()
 		if conn == nil {
-			logger.Printf("couldn't accept: %q", err)
+			log.L.Printf("couldn't accept: %q", err)
 			continue
 		}
 
-		logger.Printf("opened conn %v", conn.RemoteAddr())
+		log.L.Printf("opened conn %v", conn.RemoteAddr())
 		incomingConns <- conn
 	}
 }
@@ -84,20 +72,20 @@ func serveClient(client *clients.Client) {
 		if err != nil {
 			if err == io.EOF {
 				client.Close()
-				logger.Printf("closed client %v %v", client.ClientId, client.Conn.RemoteAddr())
+				log.L.Printf("closed client %v %v", client.ClientId, client.Conn.RemoteAddr())
 				return
 			}
 			if t, ok := err.(*net.OpError); ok && t.Timeout() {
 				continue
 			}
 
-			logger.Printf("unknown error %q", err)
+			log.L.Printf("unknown error %q", err)
 			continue
 		}
 
 		parts, err := m.Array()
 		if err != nil {
-			logger.Printf("error parsing message to array: %q", err)
+			log.L.Printf("error parsing message to array: %q", err)
 			continue
 		}
 		for i := range parts {
@@ -113,7 +101,7 @@ func serveClient(client *clients.Client) {
 		}
 
 		if err = commands.Dispatch(client, command, args); err != nil {
-			logger.Println(err)
+			log.L.Println(err)
 		}
 	}
 }

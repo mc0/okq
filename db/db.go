@@ -7,6 +7,8 @@ import (
 	"github.com/fzzy/radix/extra/pool"
 	"github.com/fzzy/radix/redis"
 	"strings"
+
+	"github.com/mc0/redeque/config"
 )
 
 // A pool of redis connections which can be read from asynchronously by anyone
@@ -14,7 +16,7 @@ var RedisPool *pool.Pool
 
 func init() {
 	var err error
-	RedisPool, err = pool.NewPool("tcp", "localhost:6379", 50)
+	RedisPool, err = pool.NewPool("tcp", config.RedisAddr, 50)
 	if err != nil {
 		panic(err)
 	}
