@@ -6,12 +6,12 @@ import (
 	"io"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/mc0/redeque/clients"
 	"github.com/mc0/redeque/commands"
 	"github.com/mc0/redeque/config"
 	"github.com/mc0/redeque/log"
+	_ "github.com/mc0/redeque/restore"
 )
 
 func main() {
@@ -23,8 +23,6 @@ func main() {
 	log.L.Printf("listening on %s", config.ListenAddr)
 
 	incomingConns := make(chan net.Conn)
-
-	setupRestoringTimedOutEvents()
 
 	go acceptConns(server, incomingConns)
 
@@ -54,11 +52,6 @@ func serveClient(client *clients.Client) {
 
 outer:
 	for {
-		err := conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-		if err != nil {
-			return
-		}
-
 		m, err := resp.ReadMessage(conn)
 		var command string
 		var args []string

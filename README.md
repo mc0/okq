@@ -62,8 +62,7 @@ client -> [job job job job] -> consumer
 
   Returns a queue's name or nil if no events were available.
 
-* QSTATUS
+* QSTATUS [queue ...]
 
-  Get the status of all active queues in the database
-
-  Returns an array-reply of queueNames in the format: [queue] [total] [processing]
+  Get the status of the given queues (or all active queues, if none are given)
+  on the system in the format: [queue] total: [total] processing: [processing]

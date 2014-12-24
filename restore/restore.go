@@ -1,4 +1,7 @@
-package main
+// Periodically runs through all the queues and finds jobs which are in the
+// claimed queue but have been abandoned and puts them back in the unclaimed
+// queue
+package restore
 
 import (
 	"github.com/fzzy/radix/redis"
@@ -8,17 +11,15 @@ import (
 	"github.com/mc0/redeque/log"
 )
 
-func setupRestoringTimedOutEvents() {
-	go restoreTimedOutEvents()
-}
+func init() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
 
-func restoreTimedOutEvents() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for _ = range ticker.C {
-		validateClaimedEvents()
-	}
+		for _ = range ticker.C {
+			validateClaimedEvents()
+		}
+	}()
 }
 
 func validateClaimedEvents() {

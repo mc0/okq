@@ -37,7 +37,7 @@ func AllQueueNames(redisClient *redis.Client) ([]string, error) {
 	var queueNames []string
 	var err error
 
-	queueKeysReply := redisClient.Cmd("KEYS", queueKey("*", "items"))
+	queueKeysReply := redisClient.Cmd("KEYS", ItemsKey("*"))
 	if queueKeysReply.Err != nil {
 		err = fmt.Errorf("ERR keys redis replied %q", queueKeysReply.Err)
 		return queueNames, err
