@@ -376,16 +376,23 @@ func qstatus(client *clients.Client, args []string) error {
 		return err
 	}
 
-	queueNames, err := db.AllQueueNames(redisClient)
-	if err != nil {
-		writeServerErr(conn, err)
-		return err
+	var queueNames []string
+
+	if len(args) == 0 {
+		queueNames, err = db.AllQueueNames(redisClient)
+		if err != nil {
+			writeServerErr(conn, err)
+			return err
+		}
+	} else {
+		queueNames = args
 	}
 
 	var queueStatuses []string
 
 	for i := range queueNames {
 		queueName := queueNames[i]
+
 		claimedCount := 0
 		availableCount := 0
 		totalCount := 0
@@ -407,7 +414,7 @@ func qstatus(client *clients.Client, args []string) error {
 
 		totalCount = availableCount + claimedCount
 
-		queueStatus := fmt.Sprintf("%s %d %d", queueName, totalCount, claimedCount)
+		queueStatus := fmt.Sprintf("%s total: %d processing: %d", queueName, totalCount, claimedCount)
 		queueStatuses = append(queueStatuses, queueStatus)
 	}
 
