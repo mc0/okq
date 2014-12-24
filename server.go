@@ -12,6 +12,7 @@ import (
 	"github.com/mc0/redeque/commands"
 	"github.com/mc0/redeque/config"
 	"github.com/mc0/redeque/log"
+	_ "github.com/mc0/redeque/restore"
 )
 
 func main() {
@@ -23,8 +24,6 @@ func main() {
 	log.L.Printf("listening on %s", config.ListenAddr)
 
 	incomingConns := make(chan net.Conn)
-
-	setupRestoringTimedOutEvents()
 
 	go acceptConns(server, incomingConns)
 
