@@ -19,27 +19,18 @@ const (
 )
 
 // Only need a buffer of size one. If two things are writing to the buffer, they
-// both want consumers updated
-var updateConsumersCh = make(chan struct{}, 1)
-
-// Similar to updateConsumersCh: need to know of queue changes to update subs
+// both want subbed queues updated
 var updateNotifyCh = make(chan struct{}, 1)
 
 func consumersUpdater() {
 	tick := time.Tick(10 * time.Second)
-	for {
-		select {
-		case <-tick:
-		case <-updateConsumersCh:
+	for _ = range tick {
+		if err := updateActiveConsumers(); err != nil {
+			log.L.Printf("updating active consumers: %s", err)
 		}
-
-		log.L.Debug("updating consumers")
-		if err := updateConsumers(); err != nil {
-			log.L.Printf("updating consumers: %s", err)
+		if err := removeStaleConsumers(); err != nil {
+			log.L.Printf("removing stale consumers: %s", err)
 		}
-
-		// We sleep as a form of rate-limiting
-		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -145,15 +136,6 @@ func notifyUpdateSubscriptions(subConn *pubsubch.PubSubCh, updateCh chan struct{
 	subConn.Close()
 }
 
-// Force the active consumers to get updated in redis. This can affects the
-// results of the QSTATUS command.
-func ForceUpdateConsumers() {
-	select {
-	case updateConsumersCh <- struct{}{}:
-	default:
-	}
-}
-
 func getConsumersQueues() []string {
 	respChan := make(chan []string, 1)
 	callCh <- func() {
@@ -176,14 +158,17 @@ func getConsumersQueues() []string {
 	return <-respChan
 }
 
-func updateConsumers() error {
+func updateActiveConsumers() error {
+	log.L.Debug("updating active consumers")
 	respChan := make(chan error)
 	callCh <- func() {
-		// A list of args to pass into ZADD for each consumer
-		consumersArgs := make(map[string][]interface{})
-
 		ts := time.Now().Unix()
-		staleTS := time.Now().Add(STALE_CONSUMER_TIMEOUT * -1).Unix()
+
+		// A list of args to pass into ZADD for each consumer
+		consumersArgs := map[string][]interface{}{}
+
+		// Populate consumersArgs arguments to the ZADD commands we're going to
+		// need to perform
 		for _, client := range activeClients {
 			for _, queueName := range client.queues {
 				args, ok := consumersArgs[queueName]
@@ -203,19 +188,41 @@ func updateConsumers() error {
 			return
 		}
 
-		for queueName, args := range consumersArgs {
+		for _, args := range consumersArgs {
 			if err := redisClient.Cmd("ZADD", args...).Err; err != nil {
 				respChan <- err
 				return
 			}
+		}
 
-			consumersKey := db.ConsumersKey(queueName)
-			r := redisClient.Cmd("ZREMRANGEBYSCORE", consumersKey, "-inf", staleTS)
+		db.RedisPool.Put(redisClient)
+		respChan <- nil
+	}
+	return <-respChan
+}
+
+func removeStaleConsumers() error {
+	log.L.Debug("removing stale consumers")
+	respChan := make(chan error)
+	callCh <- func() {
+
+		redisClient, err := db.RedisPool.Get()
+		if err != nil {
+			respChan <- err
+			return
+		}
+
+		wildcardKey := db.ConsumersKey("*")
+		staleTS := time.Now().Add(STALE_CONSUMER_TIMEOUT * -1).Unix()
+
+		for key := range db.ScanWrapped(wildcardKey) {
+			r := redisClient.Cmd("ZREMRANGEBYSCORE", key, "-inf", staleTS)
 			if err := r.Err; err != nil {
 				respChan <- err
 				return
 			}
 		}
+
 		db.RedisPool.Put(redisClient)
 		respChan <- nil
 	}
@@ -239,20 +246,29 @@ func (client *Client) UpdateQueues(queues []string) error {
 			return
 		}
 
+		ts := time.Now().Unix()
+		pipelineSize := 0
+
 		for _, queueName := range removed {
 			consumersKey := db.ConsumersKey(queueName)
-			err := redisClient.Cmd("ZREM", consumersKey, client.ClientId).Err
-			if err != nil {
+			redisClient.Append("ZREM", consumersKey, client.ClientId)
+			pipelineSize++
+		}
+		for _, queueName := range queues {
+			consumersKey := db.ConsumersKey(queueName)
+			redisClient.Append("ZADD", consumersKey, ts, client.ClientId)
+			pipelineSize++
+		}
+		for i := 0; i < pipelineSize; i++ {
+			if err := redisClient.GetReply().Err; err != nil {
 				respChan <- err
 				return
 			}
 		}
+
 		db.RedisPool.Put(redisClient)
 		respChan <- nil
 	}
-
-	// This will write all additions to redis
-	ForceUpdateConsumers()
 
 	return <-respChan
 }
