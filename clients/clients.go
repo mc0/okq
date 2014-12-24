@@ -2,6 +2,7 @@ package clients
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
@@ -23,14 +24,21 @@ func init() {
 	go notifyConsumersEvents()
 }
 
+// Obstensibly a net.Conn, but for testing we don't want to have to set up a
+// real listen socket and all that noise
+type ClientConn interface {
+	io.ReadWriteCloser
+	RemoteAddr() net.Addr
+}
+
 type Client struct {
 	ClientId string
 	queues   []string
-	Conn     net.Conn
+	Conn     ClientConn
 	NotifyCh chan string
 }
 
-func NewClient(conn net.Conn) *Client {
+func NewClient(conn ClientConn) *Client {
 	client := &Client{Conn: conn, queues: []string{}, NotifyCh: make(chan string, 1)}
 
 	respChan := make(chan *Client, 1)

@@ -4,3 +4,4 @@ deps:
     - loc: github.com/fzzy/radix/redis
     - loc: github.com/mediocregopher/flagconfig
     - loc: github.com/mediocregopher/pubsubch
+    - loc: github.com/stretchr/testify
