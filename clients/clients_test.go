@@ -1,10 +1,9 @@
 package clients
 
 import (
-	. "testing"
 	"github.com/stretchr/testify/assert"
+	. "testing"
 )
-
 
 func TestOpenClose(t *T) {
 	client := NewClient(NewFakeClientConn())
