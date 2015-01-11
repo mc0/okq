@@ -7,11 +7,11 @@ import (
 	"net"
 	"strings"
 
-	"github.com/mc0/redeque/clients"
-	"github.com/mc0/redeque/commands"
-	"github.com/mc0/redeque/config"
-	"github.com/mc0/redeque/log"
-	_ "github.com/mc0/redeque/restore"
+	"github.com/mc0/okq/clients"
+	"github.com/mc0/okq/commands"
+	"github.com/mc0/okq/config"
+	"github.com/mc0/okq/log"
+	_ "github.com/mc0/okq/restore"
 )
 
 func main() {

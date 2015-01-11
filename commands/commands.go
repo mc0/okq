@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mc0/redeque/clients"
-	"github.com/mc0/redeque/db"
+	"github.com/mc0/okq/clients"
+	"github.com/mc0/okq/db"
 )
 
 var commandMap = map[string]func(*clients.Client, []string) error{

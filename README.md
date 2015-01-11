@@ -1,4 +1,4 @@
-Redeque
+okQ
 =======
 
 A simple go-based reliable event queueing with at-least-once support.
@@ -9,7 +9,7 @@ This allows swapping connecting directly to the service from any redis client.
 Commands
 --------
 
-Redeque is modeled as a left-to-right queue. Clients submit jobs on the left
+OkQ is modeled as a left-to-right queue. Clients submit jobs on the left
 side of the queue (with `QLPUSH`, and consumers read off the right side (with
 `QRPOP`).
 

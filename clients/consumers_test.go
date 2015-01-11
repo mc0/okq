@@ -7,7 +7,7 @@ import (
 	. "testing"
 	"time"
 
-	"github.com/mc0/redeque/db"
+	"github.com/mc0/okq/db"
 )
 
 func TestUpdateQueues(t *T) {

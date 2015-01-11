@@ -2,7 +2,7 @@ package db
 
 import (
 	"github.com/fzzy/radix/redis"
-	"github.com/mc0/redeque/log"
+	"github.com/mc0/okq/log"
 )
 
 type ScanResult struct {

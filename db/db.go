@@ -9,8 +9,8 @@ import (
 	"github.com/fzzy/radix/redis"
 	"strings"
 
-	"github.com/mc0/redeque/config"
-	"github.com/mc0/redeque/log"
+	"github.com/mc0/okq/config"
+	"github.com/mc0/okq/log"
 )
 
 // A pool of redis connections which can be read from asynchronously by anyone

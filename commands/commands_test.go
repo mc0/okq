@@ -9,7 +9,7 @@ import (
 	. "testing"
 	"time"
 
-	"github.com/mc0/redeque/clients"
+	"github.com/mc0/okq/clients"
 )
 
 func readAndAssertStr(t *T, client *clients.Client, expected string) {

@@ -7,8 +7,8 @@ import (
 	"github.com/fzzy/radix/redis"
 	"time"
 
-	"github.com/mc0/redeque/db"
-	"github.com/mc0/redeque/log"
+	"github.com/mc0/okq/db"
+	"github.com/mc0/okq/log"
 )
 
 func init() {
