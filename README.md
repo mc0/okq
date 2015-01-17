@@ -40,9 +40,10 @@ client -> [job job job job] -> consumer
 
   See QLPEEK; except the right-most
 
-* QREM queue eventId
+* QACK queue eventId
 
-  Remove an event from a queue. Should be done after the event is successfully consumed.
+  Acknowledge an event has been successfully consumed, removing it from the
+  queue permanently.
 
   Returns the number of events removed
 

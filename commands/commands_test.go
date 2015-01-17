@@ -92,7 +92,7 @@ func TestBasicFunctionality(t *T) {
 		qrpop(client, []string{queue})
 		readAndAssertArr(t, client, []string{jobs[i].eventId, jobs[i].job})
 
-		qrem(client, []string{queue, jobs[i].eventId})
+		qack(client, []string{queue, jobs[i].eventId})
 		readAndAssertInt(t, client, 1)
 	}
 }
