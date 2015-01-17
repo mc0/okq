@@ -19,7 +19,7 @@ var commandMap = map[string]func(*clients.Client, []string) error{
 	"QRPOP":     qrpop,
 	"QLPEEK":    qlpeek,
 	"QRPEEK":    qrpeek,
-	"QREM":      qrem,
+	"QACK":      qack,
 	"QLPUSH":    qlpush,
 	"QRPUSH":    qrpush,
 	"QNOTIFY":   qnotify,
@@ -194,7 +194,7 @@ func qrpop(client *clients.Client, args []string) error {
 	}
 
 	if unsafe {
-		qrem(client, []string{queueName, eventID})
+		qack(client, []string{queueName, eventID})
 	}
 
 	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
@@ -202,7 +202,7 @@ func qrpop(client *clients.Client, args []string) error {
 	return nil
 }
 
-func qrem(client *clients.Client, args []string) error {
+func qack(client *clients.Client, args []string) error {
 	var err error
 	conn := client.Conn
 	if len(args) < 2 {
@@ -248,7 +248,7 @@ func qrem(client *clients.Client, args []string) error {
 		for i := 0; i < 2; i++ {
 			if reply := redisClient.GetReply(); reply.Err != nil {
 				writeServerErr(conn, err)
-				return fmt.Errorf("QREM %d: %s", i, reply.Err)
+				return fmt.Errorf("QACK %d: %s", i, reply.Err)
 			}
 		}
 	}
