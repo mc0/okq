@@ -110,7 +110,7 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 	}
 
 	if len(eventIDs) == 0 {
-		resp.WriteArbitrary(conn, eventIDs)
+		resp.WriteArbitrary(conn, nil)
 		return nil
 	}
 

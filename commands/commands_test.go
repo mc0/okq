@@ -123,6 +123,12 @@ func TestPeeks(t *T) {
 	jobFirst := jobs[0]
 	jobLast := jobs[len(jobs)-1]
 
+	qrpeek(client, []string{queue})
+	readAndAssertNil(t, client)
+
+	qlpeek(client, []string{queue})
+	readAndAssertNil(t, client)
+
 	for i := range jobs {
 		qlpush(client, []string{queue, jobs[i].eventId, jobs[i].job})
 		readAndAssertStr(t, client, "OK")
