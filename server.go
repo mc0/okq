@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/fzzy/radix/redis/resp"
 	"io"
 	"net"
 	"strings"
+
+	"github.com/fzzy/radix/redis/resp"
 
 	"github.com/mc0/okq/clients"
 	"github.com/mc0/okq/commands"
@@ -92,7 +93,7 @@ outer:
 
 		log.L.Debug(client.Sprintf("%s %#v", command, args))
 		if err = commands.Dispatch(client, command, args); err != nil {
-			log.L.Print(client.Sprintf("command %s %#v err:", command, args, err))
+			log.L.Print(client.Sprintf("command %s %#v err: %s", command, args, err))
 		}
 	}
 }

@@ -3,12 +3,13 @@ package commands
 
 import (
 	"fmt"
-	"github.com/fzzy/radix/redis"
-	"github.com/fzzy/radix/redis/resp"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fzzy/radix/redis"
+	"github.com/fzzy/radix/redis/resp"
 
 	"github.com/mc0/okq/clients"
 	"github.com/mc0/okq/db"

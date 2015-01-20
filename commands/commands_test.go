@@ -2,12 +2,13 @@ package commands
 
 import (
 	"fmt"
-	"github.com/fzzy/radix/redis/resp"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"runtime/debug"
 	. "testing"
 	"time"
+
+	"github.com/fzzy/radix/redis/resp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mc0/okq/clients"
 )

@@ -5,9 +5,10 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/fzzy/radix/extra/pool"
 	"github.com/fzzy/radix/redis"
-	"strings"
 
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"

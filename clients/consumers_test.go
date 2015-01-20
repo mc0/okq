@@ -1,11 +1,12 @@
 package clients
 
 import (
+	. "testing"
+	"time"
+
 	"github.com/fzzy/radix/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	. "testing"
-	"time"
 
 	"github.com/mc0/okq/db"
 )

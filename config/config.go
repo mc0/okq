@@ -3,8 +3,9 @@
 package config
 
 import (
+	"log" // we don't use our log because it imports this package
+
 	"github.com/mediocregopher/flagconfig"
-	"log" // we don't use out log because it imports this package
 )
 
 var (

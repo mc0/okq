@@ -1,8 +1,9 @@
 package clients
 
 import (
-	"github.com/mediocregopher/pubsubch"
 	"time"
+
+	"github.com/mediocregopher/pubsubch"
 
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/db"

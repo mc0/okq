@@ -4,8 +4,9 @@
 package restore
 
 import (
-	"github.com/fzzy/radix/redis"
 	"time"
+
+	"github.com/fzzy/radix/redis"
 
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
