@@ -50,8 +50,11 @@ func readAndAssertArr(t *T, client *clients.Client, expected []string) {
 	}
 }
 
-func qstatusLine(queue string, totalCount, claimedCount int) string {
-	return fmt.Sprintf("%s total: %d processing: %d", queue, totalCount, claimedCount)
+func qstatusLine(queue string, totalCount, claimedCount, consumerCount int) string {
+	return fmt.Sprintf(
+		"%s total: %d processing: %d consumers: %d",
+		queue, totalCount, claimedCount, consumerCount,
+	)
 }
 
 func newClient() *clients.Client {
@@ -107,8 +110,8 @@ func TestQStatus(t *T) {
 
 	qstatus(client, queues)
 	readAndAssertArr(t, client, []string{
-		qstatusLine(queues[0], 0, 0),
-		qstatusLine(queues[1], 0, 0),
+		qstatusLine(queues[0], 0, 0, 0),
+		qstatusLine(queues[1], 0, 0, 0),
 	})
 }
 
@@ -142,7 +145,7 @@ func TestPeeks(t *T) {
 
 	// Make sure the actual status of the queue hasn't been affected
 	qstatus(client, []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, len(jobs), 0)})
+	readAndAssertArr(t, client, []string{qstatusLine(queue, len(jobs), 0, 0)})
 }
 
 func TestRPush(t *T) {
@@ -159,7 +162,7 @@ func TestRPush(t *T) {
 	readAndAssertArr(t, client, []string{"1", "bar"})
 
 	qstatus(client, []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, 2, 0)})
+	readAndAssertArr(t, client, []string{qstatusLine(queue, 2, 0, 0)})
 }
 
 func TestQNotify(t *T) {

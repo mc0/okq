@@ -67,4 +67,6 @@ client -> [job job job job] -> consumer
 * QSTATUS [queue ...]
 
   Get the status of the given queues (or all active queues, if none are given)
-  on the system in the format: [queue] total: [total] processing: [processing]
+  on the system in the format:
+
+    [queue] total: [total] processing: [processing] consumers: [consumers]

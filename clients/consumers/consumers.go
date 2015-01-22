@@ -171,3 +171,16 @@ outer:
 	}
 	return ret
 }
+
+// Returns the total number of consumers registered for the given queue, either
+// on this okq instance or others
+func QueueConsumerCount(queue string) (int64, error) {
+	consumersKey := db.ConsumersKey(queue)
+
+	redisClient, err := db.RedisPool.Get()
+	if err != nil {
+		return 0, err
+	}
+
+	return redisClient.Cmd("ZCARD", consumersKey).Int64()
+}

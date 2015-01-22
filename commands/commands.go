@@ -404,6 +404,7 @@ func qstatus(client *clients.Client, args []string) error {
 		claimedCount := 0
 		availableCount := 0
 		totalCount := 0
+		consumerCount := int64(0)
 
 		unclaimedKey := db.UnclaimedKey(queueName)
 		claimedKey := db.ClaimedKey(queueName)
@@ -417,12 +418,21 @@ func qstatus(client *clients.Client, args []string) error {
 		availableCount, err = redisClient.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
 			writeServerErr(conn, err)
-			return fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
+			return fmt.Errorf("QSTATUS LLEN unclaimed: %s", err)
 		}
 
 		totalCount = availableCount + claimedCount
 
-		queueStatus := fmt.Sprintf("%s total: %d processing: %d", queueName, totalCount, claimedCount)
+		consumerCount, err = consumers.QueueConsumerCount(queueName)
+		if err != nil {
+			writeServerErr(conn, err)
+			return fmt.Errorf("QSTATUS QueueConsumerCount: %s", err)
+		}
+
+		queueStatus := fmt.Sprintf(
+			"%s total: %d processing: %d consumers: %d",
+			queueName, totalCount, claimedCount, consumerCount,
+		)
 		queueStatuses = append(queueStatuses, queueStatus)
 	}
 
