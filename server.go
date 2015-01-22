@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/fzzy/radix/redis/resp"
 
@@ -16,6 +18,8 @@ import (
 )
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	server, err := net.Listen("tcp", config.ListenAddr)
 	if server == nil {
 		log.L.Fatal(err)

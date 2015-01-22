@@ -4,6 +4,7 @@ package commands
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -337,9 +338,11 @@ func qnotify(client *clients.Client, args []string) error {
 	queueName := ""
 	client.DrainNotifCh()
 
-	// check to see if we have any events in the registered queues
+	// check to see if we have any events in the registered queues. We check the
+	// list in a randomized order since very active queues in the list may not
+	// ever let us check after them in the list, abandoning the rest of the list
 	queueNames := client.GetQueues()
-	for i := range queueNames {
+	for _, i := range rand.Perm(len(queueNames)) {
 		unclaimedKey := db.UnclaimedKey(queueNames[i])
 
 		unclaimedCount, err := redisClient.Cmd("LLEN", unclaimedKey).Int()
