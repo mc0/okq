@@ -4,24 +4,18 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
-	"time"
+
+	"code.google.com/p/go-uuid/uuid"
 )
 
-var (
-	callCh        = make(chan func())
-	activeClients = make(map[string]*Client)
-	clientsLastID = 0
-)
+var uuidCh = make(chan string, 128)
 
 func init() {
 	go func() {
-		for call := range callCh {
-			call()
+		for {
+			uuidCh <- uuid.New()
 		}
 	}()
-	go consumersUpdater()
-	go notifyConsumersEvents()
 }
 
 // Obstensibly a net.Conn, but for testing we don't want to have to set up a
@@ -31,47 +25,29 @@ type ClientConn interface {
 	RemoteAddr() net.Addr
 }
 
+// Represents a single client, either one just submitting jobs or a consumer. It
+// expects to be handled in a single threaded context, except for methods marked
+// otherwise (specifically Notify and DrainNotifyCh)
 type Client struct {
-	ClientId string
-	queues   []string
+	Id       string
+	Queues   []string
 	Conn     ClientConn
 	NotifyCh chan string
 }
 
 func NewClient(conn ClientConn) *Client {
-	client := &Client{Conn: conn, queues: []string{}, NotifyCh: make(chan string, 1)}
-
-	respChan := make(chan *Client, 1)
-
-	callCh <- func() {
-		client.setupInitial()
-		respChan <- client
+	client := &Client{
+		Id:       <-uuidCh,
+		Conn:     conn,
+		Queues:   []string{},
+		NotifyCh: make(chan string, 1),
 	}
 
-	return <-respChan
+	return client
 }
 
-func (client *Client) setupInitial() {
-	clientsLastID++
-	clientIdTime := int64(time.Now().UnixNano())
-	clientId := fmt.Sprintf("%v:%v", strconv.FormatInt(clientIdTime, 10), strconv.Itoa(clientsLastID))
-	client.ClientId = clientId
-
-	// add it to the clients map
-	activeClients[clientId] = client
-}
-
-func (client *Client) GetQueues() []string {
-	respChan := make(chan []string)
-	callCh <- func() {
-		queuesCopy := make([]string, len(client.queues))
-		copy(queuesCopy, client.queues)
-		respChan <- queuesCopy
-	}
-
-	return <-respChan
-}
-
+// Notifies the client that queueName has a job on it. This may be called from
+// another thread besides the one which "owns" the client
 func (client *Client) Notify(queueName string) {
 	select {
 	case client.NotifyCh <- queueName:
@@ -79,7 +55,9 @@ func (client *Client) Notify(queueName string) {
 	}
 }
 
-func (client *Client) DrainNotifCh() {
+// Removes any queue notifications that may be buffered in the client. This may
+// be called from another thread besides the one which "owns" the client
+func (client *Client) DrainNotifyCh() {
 	select {
 	case <-client.NotifyCh:
 	default:
@@ -87,11 +65,6 @@ func (client *Client) DrainNotifCh() {
 }
 
 func (client *Client) Close() {
-	callCh <- func() {
-		delete(activeClients, client.ClientId)
-	}
-
-	client.UpdateQueues([]string{})
 	client.Conn.Close()
 }
 
@@ -100,7 +73,7 @@ func (client *Client) Close() {
 func (client *Client) Sprintf(format string, args ...interface{}) error {
 	fullFormat := "client %v %v - " + format
 	fullArgs := make([]interface{}, 0, len(args)+2)
-	fullArgs = append(fullArgs, client.ClientId)
+	fullArgs = append(fullArgs, client.Id)
 	fullArgs = append(fullArgs, client.Conn.RemoteAddr())
 	fullArgs = append(fullArgs, args...)
 

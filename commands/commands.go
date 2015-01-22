@@ -13,6 +13,7 @@ import (
 	"github.com/fzzy/radix/redis/resp"
 
 	"github.com/mc0/okq/clients"
+	"github.com/mc0/okq/clients/consumers"
 	"github.com/mc0/okq/db"
 )
 
@@ -57,11 +58,12 @@ func writeErrf(w io.Writer, format string, args ...interface{}) error {
 }
 
 func qregister(client *clients.Client, args []string) error {
-	err := client.UpdateQueues(args)
+	err := consumers.UpdateQueues(client, args)
 	if err != nil {
 		writeServerErr(client.Conn, err)
 		return err
 	}
+	client.Queues = args
 
 	conn := client.Conn
 
@@ -336,12 +338,12 @@ func qnotify(client *clients.Client, args []string) error {
 
 	// ensure the NotifyCh is empty before waiting
 	queueName := ""
-	client.DrainNotifCh()
+	client.DrainNotifyCh()
 
 	// check to see if we have any events in the registered queues. We check the
 	// list in a randomized order since very active queues in the list may not
 	// ever let us check after them in the list, abandoning the rest of the list
-	queueNames := client.GetQueues()
+	queueNames := client.Queues
 	for _, i := range rand.Perm(len(queueNames)) {
 		unclaimedKey := db.UnclaimedKey(queueNames[i])
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/fzzy/radix/redis/resp"
 
 	"github.com/mc0/okq/clients"
+	"github.com/mc0/okq/clients/consumers"
 	"github.com/mc0/okq/commands"
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"
@@ -53,7 +53,6 @@ func acceptConns(listener net.Listener, incomingConns chan net.Conn) {
 
 func serveClient(client *clients.Client) {
 	conn := client.Conn
-	defer conn.Close()
 
 outer:
 	for {
@@ -62,17 +61,15 @@ outer:
 		var args []string
 
 		if err != nil {
-			if err == io.EOF {
-				client.Close()
-				log.L.Debug(client.Sprintf("closed"))
-				return
-			}
 			if t, ok := err.(*net.OpError); ok && t.Timeout() {
 				continue
 			}
-
-			log.L.Printf("unknown error %q", err)
-			continue
+			log.L.Debug(client.Sprintf("client connection error %q", err))
+			if len(client.Queues) > 0 {
+				consumers.UpdateQueues(client, []string{})
+			}
+			client.Close()
+			return
 		}
 
 		parts, err := m.Array()
