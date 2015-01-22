@@ -166,6 +166,7 @@ func qrpop(client *clients.Client, args []string) error {
 	claimedKey := db.ClaimedKey(queueName)
 	reply := redisClient.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
 	if reply.Type == redis.NilReply {
+		db.RedisPool.Put(redisClient)
 		resp.WriteArbitrary(conn, nil)
 		return nil
 	}
@@ -306,9 +307,10 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 	channelName := db.QueueChannelNameKey(queueName)
 	err = redisClient.Cmd("PUBLISH", channelName, eventID).Err
 
+	db.RedisPool.Put(redisClient)
+
 	// TODO resp simple string
 	conn.Write([]byte("+OK\r\n"))
-	db.RedisPool.Put(redisClient)
 	return err
 }
 
@@ -350,6 +352,7 @@ func qnotify(client *clients.Client, args []string) error {
 			break
 		}
 	}
+	db.RedisPool.Put(redisClient)
 
 	if len(queueName) == 0 {
 		select {
@@ -364,7 +367,6 @@ func qnotify(client *clients.Client, args []string) error {
 		resp.WriteArbitrary(conn, nil)
 	}
 
-	db.RedisPool.Put(redisClient)
 	return nil
 }
 
