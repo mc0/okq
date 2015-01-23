@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/fzzy/radix/extra/pool"
-	"github.com/fzzy/radix/redis"
 
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"
@@ -33,21 +32,15 @@ func queueKey(queueName string, parts ...string) string {
 }
 
 // Returns a list of all currently active queues
-// TODO use scan
-func AllQueueNames(redisClient *redis.Client) ([]string, error) {
-	queueKeys, err := redisClient.Cmd("KEYS", ItemsKey("*")).List()
-	if err != nil {
-		return nil, err
-	}
-
+func AllQueueNames() []string {
 	var queueNames []string
-	for i := range queueKeys {
-		keyParts := strings.Split(queueKeys[i], ":")
+	for queueKey := range ScanWrapped(ItemsKey("*")) {
+		keyParts := strings.Split(queueKey, ":")
 		queueName := keyParts[1]
 		queueNames = append(queueNames, queueName[1:len(queueName)-1])
 	}
 
-	return queueNames, nil
+	return queueNames
 }
 
 func UnclaimedKey(queueName string) string {

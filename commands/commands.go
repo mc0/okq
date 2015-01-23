@@ -369,26 +369,20 @@ func qnotify(client *clients.Client, args []string) error {
 func qstatus(client *clients.Client, args []string) error {
 	conn := client.Conn
 
+	var queueNames []string
+	if len(args) == 0 {
+		// don't collide with err, which is passed into CarefullyPut
+		queueNames = db.AllQueueNames()
+	} else {
+		queueNames = args
+	}
+
 	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		writeServerErr(conn, err)
 		return err
 	}
 	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
-	var queueNames []string
-
-	if len(args) == 0 {
-		// don't collide with err, which is passed into CarefullyPut
-		var qerr error
-		queueNames, qerr = db.AllQueueNames(redisClient)
-		if qerr != nil {
-			writeServerErr(conn, qerr)
-			return qerr
-		}
-	} else {
-		queueNames = args
-	}
 
 	var queueStatuses []string
 

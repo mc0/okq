@@ -26,18 +26,14 @@ func init() {
 func validateClaimedEvents() {
 	log.L.Debug("validating claimed events")
 
+	queueNames := db.AllQueueNames()
+
 	redisClient, err := db.RedisPool.Get()
 	if err != nil {
 		log.L.Printf("ERR failed to get redis conn %q", err)
 		return
 	}
 	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
-	queueNames, err := db.AllQueueNames(redisClient)
-	if err != nil {
-		log.L.Printf("ERR failed getting all queue names: %s", err)
-		return
-	}
 
 	for i := range queueNames {
 		queueName := queueNames[i]
