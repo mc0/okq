@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/fzzy/radix/redis/resp"
@@ -86,15 +85,13 @@ outer:
 				continue outer
 			}
 			if i == 0 {
-				command = strings.ToUpper(val)
+				command = val
 			} else {
 				args = append(args, val)
 			}
 		}
 
 		log.L.Debug(client.Sprintf("%s %#v", command, args))
-		if err = commands.Dispatch(client, command, args); err != nil {
-			log.L.Print(client.Sprintf("command %s %#v err: %s", command, args, err))
-		}
+		commands.Dispatch(client, command, args)
 	}
 }
