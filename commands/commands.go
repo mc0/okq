@@ -30,6 +30,8 @@ var commandMap = map[string]func(*clients.Client, []string) error{
 	"PING":      ping,
 }
 
+var okSS = resp.NewSimpleString("OK")
+
 // All commands take in a client whose command has already been read off the
 // socket, a list of arguments from that command (not including the command name
 // itself), and return an error ONLY if the error is worth logging (disconnect
@@ -67,8 +69,7 @@ func qregister(client *clients.Client, args []string) error {
 
 	conn := client.Conn
 
-	// TODO add WriteSimpleString to resp
-	conn.Write([]byte("+OK\r\n"))
+	resp.WriteArbitrary(conn, okSS)
 	return nil
 }
 
@@ -302,8 +303,7 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 	channelName := db.QueueChannelNameKey(queueName)
 	err = redisClient.Cmd("PUBLISH", channelName, eventID).Err
 
-	// TODO resp simple string
-	conn.Write([]byte("+OK\r\n"))
+	resp.WriteArbitrary(conn, okSS)
 	return err
 }
 
@@ -434,6 +434,7 @@ func qstatus(client *clients.Client, args []string) error {
 	return nil
 }
 
+var pong = resp.NewSimpleString("PONG")
 func ping(client *clients.Client, args []string) error {
 	conn := client.Conn
 	if len(args) != 0 {
@@ -441,8 +442,7 @@ func ping(client *clients.Client, args []string) error {
 		return nil
 	}
 
-	// TODO add WriteSimpleString to resp
-	conn.Write([]byte("+PONG\r\n"))
+	resp.WriteArbitrary(conn, pong)
 	return nil
 }
 
