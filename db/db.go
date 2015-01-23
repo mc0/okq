@@ -4,7 +4,6 @@ package db
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/fzzy/radix/extra/pool"
@@ -34,20 +33,14 @@ func queueKey(queueName string, parts ...string) string {
 }
 
 // Returns a list of all currently active queues
+// TODO use scan
 func AllQueueNames(redisClient *redis.Client) ([]string, error) {
+	queueKeys, err := redisClient.Cmd("KEYS", ItemsKey("*")).List()
+	if err != nil {
+		return nil, err
+	}
+
 	var queueNames []string
-	var err error
-
-	queueKeysReply := redisClient.Cmd("KEYS", ItemsKey("*"))
-	if queueKeysReply.Err != nil {
-		err = fmt.Errorf("ERR keys redis replied %q", queueKeysReply.Err)
-		return queueNames, err
-	}
-	if queueKeysReply.Type == redis.NilReply {
-		return queueNames, nil
-	}
-
-	queueKeys, _ := queueKeysReply.List()
 	for i := range queueKeys {
 		keyParts := strings.Split(queueKeys[i], ":")
 		queueName := keyParts[1]

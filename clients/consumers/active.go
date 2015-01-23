@@ -58,14 +58,14 @@ func updateActiveConsumers() error {
 	if err != nil {
 		return err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	for _, args := range consumersArgs {
-		if err := redisClient.Cmd("ZADD", args...).Err; err != nil {
+		if err = redisClient.Cmd("ZADD", args...).Err; err != nil {
 			return err
 		}
 	}
 
-	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -76,17 +76,17 @@ func removeStaleConsumers(timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	wildcardKey := db.ConsumersKey("*")
 	staleTS := time.Now().Add(timeout * -1).Unix()
 
 	for key := range db.ScanWrapped(wildcardKey) {
 		r := redisClient.Cmd("ZREMRANGEBYSCORE", key, "-inf", staleTS)
-		if err := r.Err; err != nil {
+		if err = r.Err; err != nil {
 			return err
 		}
 	}
 
-	db.RedisPool.Put(redisClient)
 	return nil
 }

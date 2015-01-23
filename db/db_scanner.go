@@ -48,8 +48,9 @@ func Scan(redisClient *redis.Client, pattern string) <-chan *ScanResult {
 }
 
 // Same as Scan, except it handles Get'ing and Put'ing the connection on the
-// pool, and doesn't return errors (it logs them instead). It will close the channel when there are no
-// more results to give, or when there has been an error
+// pool, and doesn't return errors (it logs them instead). It will close the
+// channel when there are no more results to give, or when there has been an
+// error
 func ScanWrapped(pattern string) <-chan string {
 	retCh := make(chan string)
 	go func() {
@@ -59,16 +60,16 @@ func ScanWrapped(pattern string) <-chan string {
 			log.L.Printf("starting ScanWrapped(%s): %s", pattern, err)
 			return
 		}
+		defer RedisPool.CarefullyPut(redisClient, &err)
 
 		for r := range Scan(redisClient, pattern) {
-			if r.Err != nil {
+			if err = r.Err; err != nil {
 				log.L.Printf("ScanWrapped(%s): %s", pattern, err)
 				return
 			}
 			retCh <- r.Result
 		}
 
-		RedisPool.Put(redisClient)
 	}()
 	return retCh
 }

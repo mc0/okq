@@ -94,25 +94,19 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 		writeServerErr(conn, err)
 		return fmt.Errorf("QPEEK* redisPool.Get(): %s", err)
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	offset := "0"
 	if peekRight {
 		offset = "-1"
 	}
-	reply := redisClient.Cmd("LRANGE", unclaimedKey, offset, offset)
-	if reply.Type == redis.NilReply {
-		resp.WriteArbitrary(conn, nil)
-		return nil
-	}
 
-	eventIDs, err := reply.List()
+	eventIDs, err := redisClient.Cmd("LRANGE", unclaimedKey, offset, offset).List()
 	if err != nil {
 		resp.WriteArbitrary(conn, nil)
 		return fmt.Errorf("QPEEK* LRANGE: %s", err)
-	}
-
-	if len(eventIDs) == 0 {
+	} else if len(eventIDs) == 0 {
 		resp.WriteArbitrary(conn, nil)
 		return nil
 	}
@@ -120,7 +114,7 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 	eventID := eventIDs[0]
 
 	itemsKey := db.ItemsKey(queueName)
-	reply = redisClient.Cmd("HGET", itemsKey, eventID)
+	reply := redisClient.Cmd("HGET", itemsKey, eventID)
 
 	var eventRaw string
 	if reply.Type != redis.NilReply {
@@ -131,7 +125,6 @@ func qpeekgeneric(client *clients.Client, args []string, peekRight bool) error {
 	}
 
 	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
-	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -164,12 +157,12 @@ func qrpop(client *clients.Client, args []string) error {
 		writeServerErr(conn, err)
 		return fmt.Errorf("QRPOP redisPool.Get(): %s", err)
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
 	reply := redisClient.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
 	if reply.Type == redis.NilReply {
-		db.RedisPool.Put(redisClient)
 		resp.WriteArbitrary(conn, nil)
 		return nil
 	}
@@ -182,9 +175,9 @@ func qrpop(client *clients.Client, args []string) error {
 
 	lockKey := db.ItemLockKey(queueName, eventID)
 	reply = redisClient.Cmd("SET", lockKey, 1, "EX", strconv.Itoa(expires), "NX")
-	if reply.Err != nil {
-		writeServerErr(conn, reply.Err)
-		return fmt.Errorf("QRPOP SET: %s", reply.Err)
+	if err = reply.Err; err != nil {
+		writeServerErr(conn, err)
+		return fmt.Errorf("QRPOP SET: %s", err)
 	}
 
 	itemsKey := db.ItemsKey(queueName)
@@ -203,7 +196,6 @@ func qrpop(client *clients.Client, args []string) error {
 	}
 
 	resp.WriteArbitrary(conn, []string{eventID, eventRaw})
-	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -219,6 +211,7 @@ func qack(client *clients.Client, args []string) error {
 		writeServerErr(conn, err)
 		return err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	queueName, eventID := args[0], args[1]
 	claimedKey := db.ClaimedKey(queueName)
@@ -251,15 +244,14 @@ func qack(client *clients.Client, args []string) error {
 		redisClient.Append("HDEL", itemsKey, eventID)
 		redisClient.Append("DEL", lockKey)
 		for i := 0; i < 2; i++ {
-			if reply := redisClient.GetReply(); reply.Err != nil {
+			if err = redisClient.GetReply().Err; err != nil {
 				writeServerErr(conn, err)
-				return fmt.Errorf("QACK %d: %s", i, reply.Err)
+				return err
 			}
 		}
 	}
 
 	resp.WriteArbitrary(conn, numRemoved)
-	db.RedisPool.Put(redisClient)
 	return nil
 }
 
@@ -283,6 +275,7 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 		writeServerErr(conn, err)
 		return err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	queueName, eventID, contents := args[0], args[1], args[2]
 	itemsKey := db.ItemsKey(queueName)
@@ -293,7 +286,6 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 		return fmt.Errorf("QPUSH* HSETNX: %s", err)
 	} else if created == 0 {
 		writeErrf(conn, "ERR duplicate event %q", eventID)
-		db.RedisPool.Put(redisClient)
 		return nil
 	}
 
@@ -302,15 +294,13 @@ func qpushgeneric(client *clients.Client, args []string, pushRight bool) error {
 	if pushRight {
 		cmd = "RPUSH"
 	}
-	if err := redisClient.Cmd(cmd, unclaimedKey, eventID).Err; err != nil {
+	if err = redisClient.Cmd(cmd, unclaimedKey, eventID).Err; err != nil {
 		writeServerErr(conn, err)
 		return fmt.Errorf("QPUSH* %s: %s", cmd, err)
 	}
 
 	channelName := db.QueueChannelNameKey(queueName)
 	err = redisClient.Cmd("PUBLISH", channelName, eventID).Err
-
-	db.RedisPool.Put(redisClient)
 
 	// TODO resp simple string
 	conn.Write([]byte("+OK\r\n"))
@@ -335,6 +325,7 @@ func qnotify(client *clients.Client, args []string) error {
 		writeServerErr(conn, err)
 		return err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	// ensure the NotifyCh is empty before waiting
 	queueName := ""
@@ -347,7 +338,8 @@ func qnotify(client *clients.Client, args []string) error {
 	for _, i := range rand.Perm(len(queueNames)) {
 		unclaimedKey := db.UnclaimedKey(queueNames[i])
 
-		unclaimedCount, err := redisClient.Cmd("LLEN", unclaimedKey).Int()
+		var unclaimedCount int
+		unclaimedCount, err = redisClient.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
 			writeServerErr(conn, err)
 			return fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
@@ -357,7 +349,6 @@ func qnotify(client *clients.Client, args []string) error {
 			break
 		}
 	}
-	db.RedisPool.Put(redisClient)
 
 	if len(queueName) == 0 {
 		select {
@@ -383,14 +374,17 @@ func qstatus(client *clients.Client, args []string) error {
 		writeServerErr(conn, err)
 		return err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	var queueNames []string
 
 	if len(args) == 0 {
-		queueNames, err = db.AllQueueNames(redisClient)
-		if err != nil {
-			writeServerErr(conn, err)
-			return err
+		// don't collide with err, which is passed into CarefullyPut
+		var qerr error
+		queueNames, qerr = db.AllQueueNames(redisClient)
+		if qerr != nil {
+			writeServerErr(conn, qerr)
+			return qerr
 		}
 	} else {
 		queueNames = args
@@ -437,7 +431,6 @@ func qstatus(client *clients.Client, args []string) error {
 	}
 
 	resp.WriteArbitrary(conn, queueStatuses)
-	db.RedisPool.Put(redisClient)
 	return nil
 }
 

@@ -112,6 +112,7 @@ func UpdateQueues(client *clients.Client, queues []string) error {
 			respCh <- err
 			return
 		}
+		defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 		ts := time.Now().Unix()
 		pipelineSize := 0
@@ -127,13 +128,12 @@ func UpdateQueues(client *clients.Client, queues []string) error {
 			pipelineSize++
 		}
 		for i := 0; i < pipelineSize; i++ {
-			if err := redisClient.GetReply().Err; err != nil {
+			if err = redisClient.GetReply().Err; err != nil {
 				respCh <- err
 				return
 			}
 		}
 
-		db.RedisPool.Put(redisClient)
 		respCh <- nil
 	}
 	return <-respCh
@@ -181,6 +181,8 @@ func QueueConsumerCount(queue string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
-	return redisClient.Cmd("ZCARD", consumersKey).Int64()
+	i, err := redisClient.Cmd("ZCARD", consumersKey).Int64()
+	return i, err
 }

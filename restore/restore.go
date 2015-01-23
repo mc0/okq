@@ -31,101 +31,79 @@ func validateClaimedEvents() {
 		log.L.Printf("ERR failed to get redis conn %q", err)
 		return
 	}
-	// TODO don't defer this
-	defer db.RedisPool.Put(redisClient)
+	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	queueNames, err := db.AllQueueNames(redisClient)
+	if err != nil {
+		log.L.Printf("ERR failed getting all queue names: %s", err)
+		return
+	}
 
 	for i := range queueNames {
 		queueName := queueNames[i]
 		claimedKey := db.ClaimedKey(queueName)
+
 		// get the presumably oldest 50 items
-		reply := redisClient.Cmd("LRANGE", claimedKey, -50, -1)
-		if reply.Err != nil {
-			log.L.Printf("ERR rpoplpush redis replied %q", reply.Err)
-			continue
-		}
-		if reply.Type == redis.NilReply {
-			continue
-		}
-
-		eventIDs, err := reply.List()
+		var eventIDs []string
+		eventIDs, err = redisClient.Cmd("LRANGE", claimedKey, -50, -1).List()
 		if err != nil {
-			continue
-		}
-
-		if len(eventIDs) == 0 {
+			log.L.Printf("ERR lrange redis replied %q", err)
+			return
+		} else if len(eventIDs) == 0 {
 			continue
 		}
 
 		var locks []interface{}
 		for i := range eventIDs {
 			lockKey := db.ItemLockKey(queueName, eventIDs[i])
-			locks = append(locks, interface{}(lockKey))
+			locks = append(locks, lockKey)
 		}
 
-		reply = redisClient.Cmd("MGET", locks...)
-		if reply.Err != nil {
-			log.L.Printf("ERR rpoplpush redis replied %q", reply.Err)
-			continue
-		}
-		if reply.Type == redis.NilReply {
-			continue
-		}
-
-		locksList, err := reply.ListBytes()
+		var locksList [][]byte
+		locksList, err = redisClient.Cmd("MGET", locks...).ListBytes()
 		if err != nil {
-			continue
+			log.L.Printf("ERR mget redis replied %q", err)
+			return
 		}
 
 		for i := range locksList {
 			if locksList[i] == nil {
-				restoreEventToQueue(redisClient, queueName, eventIDs[i])
+				err = restoreEventToQueue(redisClient, queueName, eventIDs[i])
+				if err != nil {
+					return
+				}
 			}
 		}
 	}
 }
 
-// TODO pipeline commands in here. Also, what's the point of setting the restore
-// key?
-func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID string) {
+func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID string) error {
 	// Set a lock for restoring
 	restoreKey := db.ItemRestoreKey(queueName, eventID)
 	reply := redisClient.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
 	if reply.Err != nil {
 		log.L.Printf("set failed for restoring %q", reply.Err)
-		return
+		return reply.Err
 	}
 	if reply.Type == redis.NilReply {
-		log.L.Print("set returned nil reply; must be restored already")
-		return
+		log.L.Debug("%s restored already", eventID)
+		return nil
 	}
 
-	reply = redisClient.Cmd("MULTI")
-	if reply.Err != nil {
-		log.L.Printf("multi failed for restoring %q", reply.Err)
-		return
-	}
-
-	// Push on the right so it gets action right away
 	unclaimedKey := db.UnclaimedKey(queueName)
-	reply = redisClient.Cmd("RPUSH", unclaimedKey, eventID)
-	if reply.Err != nil {
-		log.L.Printf("lpush failed for restoring %q", reply.Err)
-		return
-	}
-
-	// Remove the claimed item
 	claimedKey := db.ClaimedKey(queueName)
-	reply = redisClient.Cmd("LREM", claimedKey, 1, eventID)
-	if reply.Err != nil {
-		log.L.Printf("lpush failed for restoring %q", reply.Err)
-		return
-	}
+	redisClient.Append("MULTI")
+	redisClient.Append("RPUSH", unclaimedKey, eventID)
+	redisClient.Append("LREM", claimedKey, 1, eventID)
+	redisClient.Append("EXEC")
 
-	reply = redisClient.Cmd("EXEC")
-	if reply.Err != nil {
-		log.L.Printf("exec failed for restoring %q", reply.Err)
-		return
+	for {
+		reply = redisClient.GetReply()
+		if reply.Err == redis.PipelineQueueEmptyError {
+			return nil
+		} else if reply.Err != nil {
+			log.L.Printf("restore transaction for %s failed: %s", eventID, reply.Err)
+			return reply.Err
+		}
 	}
 }
