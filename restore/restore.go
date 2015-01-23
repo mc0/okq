@@ -88,18 +88,6 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	redisClient.Append("MULTI")
-	redisClient.Append("RPUSH", unclaimedKey, eventID)
-	redisClient.Append("LREM", claimedKey, 1, eventID)
-	redisClient.Append("EXEC")
-
-	for {
-		reply = redisClient.GetReply()
-		if reply.Err == redis.PipelineQueueEmptyError {
-			return nil
-		} else if reply.Err != nil {
-			log.L.Printf("restore transaction for %s failed: %s", eventID, reply.Err)
-			return reply.Err
-		}
-	}
+	r := db.Lua(redisClient, "LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
+	return r.Err
 }

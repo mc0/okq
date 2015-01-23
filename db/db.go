@@ -20,7 +20,10 @@ func init() {
 	log.L.Printf("connecting to redis at %s", config.RedisAddr)
 	RedisPool, err = pool.NewPool("tcp", config.RedisAddr, 200)
 	if err != nil {
-		panic(err)
+		log.L.Fatal(err)
+	}
+	if err = initLuaScripts(); err != nil {
+		log.L.Fatal(err)
 	}
 }
 
