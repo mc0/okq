@@ -8,6 +8,7 @@ import (
 )
 
 var callCh = make(chan func(*state))
+
 func init() {
 	go func() {
 		s := state{

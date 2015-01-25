@@ -399,6 +399,7 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 }
 
 var pong = resp.NewSimpleString("PONG")
+
 func ping(client *clients.Client, args []string) (interface{}, error) {
 	return pong, nil
 }

@@ -2,11 +2,12 @@ package restore
 
 import (
 	. "testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/clients"
+	"github.com/mc0/okq/db"
 )
 
 func TestRestore(t *T) {

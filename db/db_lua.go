@@ -12,8 +12,7 @@ type lua struct {
 }
 
 var luaScripts = map[string]*lua{
-	"LREMRPUSH": {script:
-		`local n = redis.call("LREM", KEYS[1], 0, ARGV[1])
+	"LREMRPUSH": {script: `local n = redis.call("LREM", KEYS[1], 0, ARGV[1])
 		if n > 0 then
 		    redis.call("RPUSH", KEYS[2], ARGV[1])
 			end
@@ -55,11 +54,11 @@ func Lua(
 	if !ok {
 		return &redis.Reply{
 			Type: redis.ErrorReply,
-			Err: fmt.Errorf("unknown lua script: %s", cmd),
+			Err:  fmt.Errorf("unknown lua script: %s", cmd),
 		}
 	}
 
-	realArgs := make([]interface{}, 0, len(args) + 2)
+	realArgs := make([]interface{}, 0, len(args)+2)
 	realArgs = append(realArgs, l.hash, numKeys)
 	realArgs = append(realArgs, args...)
 
