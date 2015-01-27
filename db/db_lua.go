@@ -38,7 +38,7 @@ func initLuaScripts() error {
 	return nil
 }
 
-// Performs one of the preloaded Lua scripts that have been built-in. It's
+// Lua performs one of the preloaded Lua scripts that have been built-in. It's
 // *possible* that the script wasn't loaded in initLuaScripts() for some strange
 // reason, this tries to handle that case as well.
 //

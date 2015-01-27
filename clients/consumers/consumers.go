@@ -33,11 +33,11 @@ type state struct {
 
 // Returns a slice containing a client's current queues, or empty slice if there
 // are none registered
-func (s *state) clientQueues(clientId string) []string {
+func (s *state) clientQueues(clientID string) []string {
 	queues := make([]string, 0, 8)
 	for q, clients := range s.queueM {
 		for _, client := range clients {
-			if client.Id == clientId {
+			if client.ID == clientID {
 				queues = append(queues, q)
 			}
 		}
@@ -50,9 +50,9 @@ func (s *state) clientQueues(clientId string) []string {
 func (s *state) addClientQueues(client *clients.Client, queues []string) {
 	for _, q := range queues {
 		if mc := s.queueM[q]; mc != nil {
-			mc[client.Id] = client
+			mc[client.ID] = client
 		} else {
-			s.queueM[q] = map[string]*clients.Client{client.Id: client}
+			s.queueM[q] = map[string]*clients.Client{client.ID: client}
 		}
 	}
 }
@@ -61,7 +61,7 @@ func (s *state) addClientQueues(client *clients.Client, queues []string) {
 func (s *state) removeClientQueues(client *clients.Client, queues []string) {
 	for _, q := range queues {
 		if mc := s.queueM[q]; mc != nil {
-			delete(mc, client.Id)
+			delete(mc, client.ID)
 			if len(mc) == 0 {
 				delete(s.queueM, q)
 			}
@@ -72,33 +72,33 @@ func (s *state) removeClientQueues(client *clients.Client, queues []string) {
 // Returns a slice containing a queue's currently registered clients, or empty
 // slice if there are none registered
 func (s *state) queueClients(queue string) []*clients.Client {
-	if mc := s.queueM[queue]; mc == nil {
+	mc := s.queueM[queue]
+	if mc == nil {
 		return []*clients.Client{}
-	} else {
-		cs := make([]*clients.Client, 0, len(mc))
-		for _, c := range mc {
-			cs = append(cs, c)
-		}
-		return cs
 	}
+	cs := make([]*clients.Client, 0, len(mc))
+	for _, c := range mc {
+		cs = append(cs, c)
+	}
+	return cs
 }
 
 // Returns a slice of all queues currently registered by at least one client
 func (s *state) registeredQueues() []string {
 	qs := make([]string, 0, len(s.queueM))
-	for q, _ := range s.queueM {
+	for q := range s.queueM {
 		qs = append(qs, q)
 	}
 	return qs
 }
 
-// Should be called whenever a client changes what queues it's registered for.
-// The new full list of registered queues should be passed in, this method will
-// do a diff and figure it out what was removed
+// UpdateQueues should be called whenever a client changes what queues it's
+// registered for. The new full list of registered queues should be passed in,
+// this method will do a diff and figure it out what was removed
 func UpdateQueues(client *clients.Client, queues []string) error {
 	respCh := make(chan error)
 	callCh <- func(s *state) {
-		oldQueues := s.clientQueues(client.Id)
+		oldQueues := s.clientQueues(client.ID)
 		removed := stringSliceSub(oldQueues, queues)
 		s.addClientQueues(client, queues)
 		s.removeClientQueues(client, removed)
@@ -120,12 +120,12 @@ func UpdateQueues(client *clients.Client, queues []string) error {
 
 		for _, queueName := range removed {
 			consumersKey := db.ConsumersKey(queueName)
-			redisClient.Append("ZREM", consumersKey, client.Id)
+			redisClient.Append("ZREM", consumersKey, client.ID)
 			pipelineSize++
 		}
 		for _, queueName := range queues {
 			consumersKey := db.ConsumersKey(queueName)
-			redisClient.Append("ZADD", consumersKey, ts, client.Id)
+			redisClient.Append("ZADD", consumersKey, ts, client.ID)
 			pipelineSize++
 		}
 		for i := 0; i < pipelineSize; i++ {
@@ -173,8 +173,8 @@ outer:
 	return ret
 }
 
-// Returns the total number of consumers registered for the given queue, either
-// on this okq instance or others
+// QueueConsumerCount returns the total number of consumers registered for the
+// given queue, either on this okq instance or others
 func QueueConsumerCount(queue string) (int64, error) {
 	consumersKey := db.ConsumersKey(queue)
 

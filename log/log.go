@@ -1,5 +1,5 @@
-// A wrapper around the standard log package, with all the settings we want
-// applied already set
+// Package log is a wrapper around the standard log package, with all the
+// settings we want applied already set
 package log
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/mc0/okq/config"
 )
 
-type OkQLogger struct {
+type okqLogger struct {
 	*log.Logger
 }
 
@@ -20,7 +20,7 @@ const defaultFlags = log.LstdFlags
 // This is what all logging methods should be called on. We leave this public
 // and don't make wrappers around it so that the Lshortfile flag will work
 // (prints out file and line number of logs)
-var L OkQLogger
+var L okqLogger
 
 func init() {
 	var flags int
@@ -29,10 +29,10 @@ func init() {
 	} else {
 		flags = log.LstdFlags
 	}
-	L = OkQLogger{log.New(os.Stdout, "", flags)}
+	L = okqLogger{log.New(os.Stdout, "", flags)}
 }
 
-func (l *OkQLogger) Debug(v ...interface{}) {
+func (l *okqLogger) Debug(v ...interface{}) {
 	if config.Debug {
 		format := strings.Repeat("%s", len(v))
 		s := fmt.Sprintf(format, v...)
@@ -40,7 +40,7 @@ func (l *OkQLogger) Debug(v ...interface{}) {
 	}
 }
 
-func (l *OkQLogger) Debugf(format string, args ...interface{}) {
+func (l *okqLogger) Debugf(format string, args ...interface{}) {
 	if config.Debug {
 		s := fmt.Sprintf(format, args...)
 		l.Output(2, s)

@@ -16,17 +16,20 @@ import (
 //
 // * Update the timestamps of all the currently live consumers on this instance
 //   in redis, so other okq instances don't truncate them
+
 const (
-	STALE_CONSUMER_TIMEOUT = 30 * time.Second
+	// StaleConsumerTimeout is the time a consumer has to update its register
+	// status on a queue before it is considered stale and removed
+	StaleConsumerTimeout = 30 * time.Second
 )
 
 func activeSpin() {
 	tick := time.Tick(10 * time.Second)
-	for _ = range tick {
+	for range tick {
 		if err := updateActiveConsumers(); err != nil {
 			log.L.Printf("updating active consumers: %s", err)
 		}
-		if err := removeStaleConsumers(STALE_CONSUMER_TIMEOUT); err != nil {
+		if err := removeStaleConsumers(StaleConsumerTimeout); err != nil {
 			log.L.Printf("removing stale consumers: %s", err)
 		}
 	}
@@ -50,7 +53,7 @@ func updateActiveConsumers() error {
 				consumersArgs[queue] = args
 			}
 
-			consumersArgs[queue] = append(args, ts, client.Id)
+			consumersArgs[queue] = append(args, ts, client.ID)
 		}
 	}
 

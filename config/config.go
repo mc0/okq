@@ -1,5 +1,5 @@
-// Reads configuration parameters off of either the command-line or a
-// configuration file and makes them available to all packages
+// Package config reads configuration parameters off of either the command-line
+// or a configuration file and makes them available to all packages
 package config
 
 import (
@@ -8,6 +8,7 @@ import (
 	"github.com/mediocregopher/flagconfig"
 )
 
+// Variables populated by the flag parsing process at runtime
 var (
 	ListenAddr string
 	RedisAddr  string

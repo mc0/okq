@@ -5,17 +5,19 @@ import (
 	"github.com/mc0/okq/log"
 )
 
+// ScanResult is read from the channel returned by Scan. If Err is non-nil than
+// the channel will be closed by Scan immediately after
 type ScanResult struct {
 	Result string
 	Err    error
 }
 
-// Performs a SCAN command on the given redis client, returning a channel which
-// will output each individual scan result. The channel will be closed if there
-// are no more results (the scan is over). If there is an error mid-scan the Err
-// field of the ScanResult will be filled with that error and the channel will
-// be closed. The redis client passed in should not be used again until the
-// channel is closed.
+// Scan performs a SCAN command on the given redis client, returning a channel
+// which will output each individual scan result. The channel will be closed if
+// there are no more results (the scan is over). If there is an error mid-scan
+// the Err field of the ScanResult will be filled with that error and the
+// channel will be closed. The redis client passed in should not be used again
+// until the channel is closed.
 func Scan(redisClient *redis.Client, pattern string) <-chan *ScanResult {
 	retCh := make(chan *ScanResult)
 	go func() {
@@ -47,10 +49,10 @@ func Scan(redisClient *redis.Client, pattern string) <-chan *ScanResult {
 	return retCh
 }
 
-// Same as Scan, except it handles Get'ing and Put'ing the connection on the
-// pool, and doesn't return errors (it logs them instead). It will close the
-// channel when there are no more results to give, or when there has been an
-// error
+// ScanWrapped is the same as Scan, except it handles Get'ing and Put'ing the
+// connection on the pool, and doesn't return errors (it logs them instead). It
+// will close the channel when there are no more results to give, or when there
+// has been an error
 func ScanWrapped(pattern string) <-chan string {
 	retCh := make(chan string)
 	go func() {

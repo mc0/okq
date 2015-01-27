@@ -81,22 +81,22 @@ func TestQRegister(t *T) {
 func TestBasicFunctionality(t *T) {
 	client := newClient()
 	queue := clients.RandQueueName()
-	events := []struct{ eventId, event string }{
+	events := []struct{ eventID, event string }{
 		{"0", "foo"},
 		{"1", "bar"},
 		{"2", "baz"},
 	}
 
 	for i := range events {
-		Dispatch(client, "qlpush", []string{queue, events[i].eventId, events[i].event})
+		Dispatch(client, "qlpush", []string{queue, events[i].eventID, events[i].event})
 		readAndAssertStr(t, client, "OK")
 	}
 
 	for i := range events {
 		Dispatch(client, "qrpop", []string{queue})
-		readAndAssertArr(t, client, []string{events[i].eventId, events[i].event})
+		readAndAssertArr(t, client, []string{events[i].eventID, events[i].event})
 
-		Dispatch(client, "qack", []string{queue, events[i].eventId})
+		Dispatch(client, "qack", []string{queue, events[i].eventID})
 		readAndAssertInt(t, client, 1)
 	}
 }
@@ -118,7 +118,7 @@ func TestQStatus(t *T) {
 func TestPeeks(t *T) {
 	client := newClient()
 	queue := clients.RandQueueName()
-	events := []struct{ eventId, event string }{
+	events := []struct{ eventID, event string }{
 		{"0", "foo"},
 		{"1", "bar"},
 		{"2", "baz"},
@@ -133,15 +133,15 @@ func TestPeeks(t *T) {
 	readAndAssertNil(t, client)
 
 	for i := range events {
-		Dispatch(client, "qlpush", []string{queue, events[i].eventId, events[i].event})
+		Dispatch(client, "qlpush", []string{queue, events[i].eventID, events[i].event})
 		readAndAssertStr(t, client, "OK")
 	}
 
 	Dispatch(client, "qrpeek", []string{queue})
-	readAndAssertArr(t, client, []string{eventFirst.eventId, eventFirst.event})
+	readAndAssertArr(t, client, []string{eventFirst.eventID, eventFirst.event})
 
 	Dispatch(client, "qlpeek", []string{queue})
-	readAndAssertArr(t, client, []string{eventLast.eventId, eventLast.event})
+	readAndAssertArr(t, client, []string{eventLast.eventID, eventLast.event})
 
 	// Make sure the actual status of the queue hasn't been affected
 	Dispatch(client, "qstatus", []string{queue})

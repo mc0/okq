@@ -1,6 +1,6 @@
-// Periodically runs through all the queues and finds events which are in the
-// claimed queue but have been abandoned and puts them back in the unclaimed
-// queue
+// Package restore periodically runs through all the queues and finds events
+// which are in the claimed queue but have been abandoned and puts them back in
+// the unclaimed queue
 package restore
 
 import (
@@ -17,7 +17,7 @@ func init() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 
-		for _ = range ticker.C {
+		for range ticker.C {
 			validateClaimedEvents()
 		}
 	}()

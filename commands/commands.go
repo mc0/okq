@@ -1,4 +1,4 @@
-// Contains all commands callable by a client
+// Package commands contains all commands callable by a client
 package commands
 
 import (
@@ -40,10 +40,9 @@ var commandMap = map[string]commandInfo{
 
 var okSS = resp.NewSimpleString("OK")
 
-// All commands take in a client whose command has already been read off the
+// Dispatch takes in a client whose command has already been read off the
 // socket, a list of arguments from that command (not including the command name
-// itself), and return an error ONLY if the error is worth logging (disconnect
-// from redis, etc...)
+// itself), and handles that command
 func Dispatch(client *clients.Client, cmd string, args []string) {
 	cmdInfo, ok := commandMap[strings.ToUpper(cmd)]
 	if !ok {

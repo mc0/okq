@@ -55,7 +55,7 @@ func main() {
 	for i := 0; i < n; i++ {
 		go func() {
 			cl := okq.New(*addr)
-			for _ = range triggerJobCh {
+			for range triggerJobCh {
 				eventB, err := time.Now().MarshalBinary()
 				if err != nil {
 					log.Fatal(err)

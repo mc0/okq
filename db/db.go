@@ -1,5 +1,5 @@
-// Package for retrieving redis connections and helper methods for interacting
-// with the data held within redis
+// Package db is used for retrieving redis connections, and has helper methods
+// for interacting with the data held within redis
 package db
 
 import (
@@ -34,7 +34,7 @@ func queueKey(queueName string, parts ...string) string {
 	return strings.Join(fullParts, ":")
 }
 
-// Returns a list of all currently active queues
+// AllQueueNames returns a list of all currently active queues
 func AllQueueNames() []string {
 	var queueNames []string
 	for queueKey := range ScanWrapped(ItemsKey("*")) {
@@ -46,34 +46,50 @@ func AllQueueNames() []string {
 	return queueNames
 }
 
+// UnclaimedKey returns the key for the list of unclaimed eventIDs in a queue
 func UnclaimedKey(queueName string) string {
 	return queueKey(queueName)
 }
 
+// ClaimedKey returns the key for the list of claimed (QRPOP'd) eventIDs in a
+// queue
 func ClaimedKey(queueName string) string {
 	return queueKey(queueName, "claimed")
 }
 
+// ConsumersKey returns the key for the sorted set of consumer clientIDs
+// QREGISTER'd to consume from a quueue
 func ConsumersKey(queueName string) string {
 	return queueKey(queueName, "consumers")
 }
 
+// ItemsKey returns the key for the hash of eventID -> event for a queue
 func ItemsKey(queueName string) string {
 	return queueKey(queueName, "items")
 }
 
+// ItemLockKey returns the key which is used as a lock when a consumer QRPOPs an
+// event off the unclaimed list. When the lock expires the item is put back in
+// unclaimed if it hasn't been QACK'd already
 func ItemLockKey(queueName, eventID string) string {
 	return queueKey(queueName, "lock", eventID)
 }
 
+// ItemRestoreKey returns the key which is used as a lock when restoring an
+// eventID from the claimed to unclaimed queues, so that other running okq
+// processes don't try to do the same
 func ItemRestoreKey(queueName, eventID string) string {
 	return queueKey(queueName, "restore", eventID)
 }
 
+// QueueChannelNameKey returns the name of the pubsub channel used to broadcast
+// events for the given queue
 func QueueChannelNameKey(queueName string) string {
 	return queueKey(queueName)
 }
 
+// GetQueueNameFromKey takes in any of the above keys produced by this package
+// and returns the queue name used to generate the key
 func GetQueueNameFromKey(key string) (string, error) {
 	parts := strings.Split(key, ":")
 	if len(parts) < 2 {
