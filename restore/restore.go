@@ -1,4 +1,4 @@
-// Periodically runs through all the queues and finds jobs which are in the
+// Periodically runs through all the queues and finds events which are in the
 // claimed queue but have been abandoned and puts them back in the unclaimed
 // queue
 package restore

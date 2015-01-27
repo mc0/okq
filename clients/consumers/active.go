@@ -7,7 +7,7 @@ import (
 	"github.com/mc0/okq/log"
 )
 
-// This piece runs separately from the main consumer thread. It's job is to
+// This piece runs separately from the main consumer thread. Its job is to
 // periodically:
 //
 // * Run through all queues it can find in redis and truncate stale consumers

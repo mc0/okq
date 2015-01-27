@@ -1,6 +1,7 @@
 // This script simply does as many Push/Pop/Ack operations as it can, as fast as
 // it can, without regard to letting the consumers actually catch up to the
-// workers. Useful for seeing how okq handles high load during high memory usage
+// consumers. Useful for seeing how okq handles high load during high memory
+// usage
 package main
 
 import (

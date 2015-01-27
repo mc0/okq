@@ -10,7 +10,7 @@ import (
 	"github.com/mc0/okq/log"
 )
 
-// This piece runs separately from the main consumer thread. It's job is to
+// This piece runs separately from the main consumer thread. Its job is to
 // subscribe to the notify redis channel and deal out the publishes it sees, as
 // well as manage the subscription to list to make sure it's always subscribed
 // to the correct channels

@@ -25,9 +25,9 @@ type ClientConn interface {
 	RemoteAddr() net.Addr
 }
 
-// Represents a single client, either one just submitting jobs or a consumer. It
-// expects to be handled in a single threaded context, except for methods marked
-// otherwise (specifically Notify and DrainNotifyCh)
+// Represents a single client, either one just submitting events or a consumer.
+// It expects to be handled in a single threaded context, except for methods
+// marked otherwise (specifically Notify and DrainNotifyCh)
 type Client struct {
 	Id       string
 	Queues   []string
@@ -46,8 +46,8 @@ func NewClient(conn ClientConn) *Client {
 	return client
 }
 
-// Notifies the client that queueName has a job on it. This may be called from
-// another thread besides the one which "owns" the client
+// Notifies the client that queueName has an event on it. This may be called
+// from another thread besides the one which "owns" the client
 func (client *Client) Notify(queueName string) {
 	select {
 	case client.NotifyCh <- queueName:

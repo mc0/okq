@@ -77,26 +77,26 @@ func TestQRegister(t *T) {
 	readAndAssertStr(t, client, "OK")
 }
 
-// Test adding jobs and removing them
+// Test adding events and removing them
 func TestBasicFunctionality(t *T) {
 	client := newClient()
 	queue := clients.RandQueueName()
-	jobs := []struct{ eventId, job string }{
+	events := []struct{ eventId, event string }{
 		{"0", "foo"},
 		{"1", "bar"},
 		{"2", "baz"},
 	}
 
-	for i := range jobs {
-		Dispatch(client, "qlpush", []string{queue, jobs[i].eventId, jobs[i].job})
+	for i := range events {
+		Dispatch(client, "qlpush", []string{queue, events[i].eventId, events[i].event})
 		readAndAssertStr(t, client, "OK")
 	}
 
-	for i := range jobs {
+	for i := range events {
 		Dispatch(client, "qrpop", []string{queue})
-		readAndAssertArr(t, client, []string{jobs[i].eventId, jobs[i].job})
+		readAndAssertArr(t, client, []string{events[i].eventId, events[i].event})
 
-		Dispatch(client, "qack", []string{queue, jobs[i].eventId})
+		Dispatch(client, "qack", []string{queue, events[i].eventId})
 		readAndAssertInt(t, client, 1)
 	}
 }
@@ -118,13 +118,13 @@ func TestQStatus(t *T) {
 func TestPeeks(t *T) {
 	client := newClient()
 	queue := clients.RandQueueName()
-	jobs := []struct{ eventId, job string }{
+	events := []struct{ eventId, event string }{
 		{"0", "foo"},
 		{"1", "bar"},
 		{"2", "baz"},
 	}
-	jobFirst := jobs[0]
-	jobLast := jobs[len(jobs)-1]
+	eventFirst := events[0]
+	eventLast := events[len(events)-1]
 
 	Dispatch(client, "qrpeek", []string{queue})
 	readAndAssertNil(t, client)
@@ -132,20 +132,20 @@ func TestPeeks(t *T) {
 	Dispatch(client, "qlpeek", []string{queue})
 	readAndAssertNil(t, client)
 
-	for i := range jobs {
-		Dispatch(client, "qlpush", []string{queue, jobs[i].eventId, jobs[i].job})
+	for i := range events {
+		Dispatch(client, "qlpush", []string{queue, events[i].eventId, events[i].event})
 		readAndAssertStr(t, client, "OK")
 	}
 
 	Dispatch(client, "qrpeek", []string{queue})
-	readAndAssertArr(t, client, []string{jobFirst.eventId, jobFirst.job})
+	readAndAssertArr(t, client, []string{eventFirst.eventId, eventFirst.event})
 
 	Dispatch(client, "qlpeek", []string{queue})
-	readAndAssertArr(t, client, []string{jobLast.eventId, jobLast.job})
+	readAndAssertArr(t, client, []string{eventLast.eventId, eventLast.event})
 
 	// Make sure the actual status of the queue hasn't been affected
 	Dispatch(client, "qstatus", []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, len(jobs), 0, 0)})
+	readAndAssertArr(t, client, []string{qstatusLine(queue, len(events), 0, 0)})
 }
 
 func TestRPush(t *T) {
