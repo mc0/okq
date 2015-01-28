@@ -108,34 +108,20 @@ func UpdateQueues(client *clients.Client, queues []string) error {
 		default:
 		}
 
-		redisClient, err := db.RedisPool.Get()
-		if err != nil {
-			respCh <- err
-			return
-		}
-		defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 		ts := time.Now().Unix()
-		pipelineSize := 0
+		pipe := make([]*db.PipePart, 0, len(removed)+len(queues))
 
 		for _, queueName := range removed {
 			consumersKey := db.ConsumersKey(queueName)
-			redisClient.Append("ZREM", consumersKey, client.ID)
-			pipelineSize++
+			pipe = append(pipe, db.PP("ZREM", consumersKey, client.ID))
 		}
 		for _, queueName := range queues {
 			consumersKey := db.ConsumersKey(queueName)
-			redisClient.Append("ZADD", consumersKey, ts, client.ID)
-			pipelineSize++
-		}
-		for i := 0; i < pipelineSize; i++ {
-			if err = redisClient.GetReply().Err; err != nil {
-				respCh <- err
-				return
-			}
+			pipe = append(pipe, db.PP("ZADD", consumersKey, ts, client.ID))
 		}
 
-		respCh <- nil
+		_, err := db.Pipe(pipe...)
+		respCh <- err
 	}
 	return <-respCh
 }
@@ -178,12 +164,6 @@ outer:
 func QueueConsumerCount(queue string) (int64, error) {
 	consumersKey := db.ConsumersKey(queue)
 
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return 0, err
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
-	i, err := redisClient.Cmd("ZCARD", consumersKey).Int64()
+	i, err := db.Cmd("ZCARD", consumersKey).Int64()
 	return i, err
 }

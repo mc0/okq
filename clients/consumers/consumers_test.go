@@ -19,17 +19,14 @@ func TestUpdateQueues(t *T) {
 		clients.RandQueueName(),
 	}
 
-	redisClient, err := db.RedisPool.Get()
-	require.Nil(t, err)
-
 	client := clients.NewClient(clients.NewFakeClientConn())
-	err = UpdateQueues(client, queues)
+	err := UpdateQueues(client, queues)
 	require.Nil(t, err)
 
 	// Make sure the client.Id appears in the consumers set for those queues
 	for i := range queues {
 		key := db.ConsumersKey(queues[i])
-		res := redisClient.Cmd("ZRANK", key, client.ID)
+		res := db.Cmd("ZRANK", key, client.ID)
 		assert.Equal(t, redis.IntegerReply, res.Type, "res: %s", res)
 	}
 
@@ -38,13 +35,13 @@ func TestUpdateQueues(t *T) {
 
 	// Make sure the first queue had this clientId removed from it
 	key := db.ConsumersKey(queues[0])
-	res := redisClient.Cmd("ZRANK", key, client.ID)
+	res := db.Cmd("ZRANK", key, client.ID)
 	assert.Equal(t, redis.NilReply, res.Type, "res: %s", res)
 
 	// Make sure the rest of the queues still have it
 	for i := range queues[1:] {
 		key := db.ConsumersKey(queues[1:][i])
-		res := redisClient.Cmd("ZRANK", key, client.ID)
+		res := db.Cmd("ZRANK", key, client.ID)
 		assert.Equal(t, redis.IntegerReply, res.Type, "res: %s", res)
 	}
 
@@ -54,26 +51,21 @@ func TestUpdateQueues(t *T) {
 	// Make sure the clientId appears nowhere
 	for i := range queues {
 		key := db.ConsumersKey(queues[i])
-		res := redisClient.Cmd("ZRANK", key, client.ID)
+		res := db.Cmd("ZRANK", key, client.ID)
 		assert.Equal(t, redis.NilReply, res.Type, "res: %s", res)
 	}
-
-	db.RedisPool.Put(redisClient)
 }
 
 func TestStaleCleanup(t *T) {
 	queue := clients.RandQueueName()
 
-	redisClient, err := db.RedisPool.Get()
-	require.Nil(t, err)
-
 	client := clients.NewClient(clients.NewFakeClientConn())
-	err = UpdateQueues(client, []string{queue})
+	err := UpdateQueues(client, []string{queue})
 	require.Nil(t, err)
 
 	// Make sure the queue has this clientId as a consumer
 	key := db.ConsumersKey(queue)
-	res := redisClient.Cmd("ZRANK", key, client.ID)
+	res := db.Cmd("ZRANK", key, client.ID)
 	assert.Equal(t, redis.IntegerReply, res.Type, "res: %s", res)
 
 	// Remove all knowledge about this client from the consumer state
@@ -87,7 +79,6 @@ func TestStaleCleanup(t *T) {
 	require.Nil(t, err)
 
 	// Make sure this client is no longer a consumer
-	res = redisClient.Cmd("ZRANK", key, client.ID)
+	res = db.Cmd("ZRANK", key, client.ID)
 	assert.Equal(t, redis.NilReply, res.Type, "key: %s clientId: %s res: %s", key, client.ID, res)
-
 }

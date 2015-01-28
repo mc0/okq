@@ -28,20 +28,13 @@ func validateClaimedEvents() {
 
 	queueNames := db.AllQueueNames()
 
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		log.L.Printf("ERR failed to get redis conn %q", err)
-		return
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 	for i := range queueNames {
 		queueName := queueNames[i]
 		claimedKey := db.ClaimedKey(queueName)
 
 		// get the presumably oldest 50 items
 		var eventIDs []string
-		eventIDs, err = redisClient.Cmd("LRANGE", claimedKey, -50, -1).List()
+		eventIDs, err := db.Cmd("LRANGE", claimedKey, -50, -1).List()
 		if err != nil {
 			log.L.Printf("ERR lrange redis replied %q", err)
 			return
@@ -56,7 +49,7 @@ func validateClaimedEvents() {
 		}
 
 		var locksList [][]byte
-		locksList, err = redisClient.Cmd("MGET", locks...).ListBytes()
+		locksList, err = db.Cmd("MGET", locks...).ListBytes()
 		if err != nil {
 			log.L.Printf("ERR mget redis replied %q", err)
 			return
@@ -64,7 +57,7 @@ func validateClaimedEvents() {
 
 		for i := range locksList {
 			if locksList[i] == nil {
-				err = restoreEventToQueue(redisClient, queueName, eventIDs[i])
+				err = restoreEventToQueue(queueName, eventIDs[i])
 				if err != nil {
 					return
 				}
@@ -73,10 +66,10 @@ func validateClaimedEvents() {
 	}
 }
 
-func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID string) error {
+func restoreEventToQueue(queueName string, eventID string) error {
 	// Set a lock for restoring
 	restoreKey := db.ItemRestoreKey(queueName, eventID)
-	reply := redisClient.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
+	reply := db.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
 	if reply.Err != nil {
 		log.L.Printf("set failed for restoring %q", reply.Err)
 		return reply.Err
@@ -88,6 +81,6 @@ func restoreEventToQueue(redisClient *redis.Client, queueName string, eventID st
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	r := db.Lua(redisClient, "LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
+	r := db.Lua("LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
 	return r.Err
 }

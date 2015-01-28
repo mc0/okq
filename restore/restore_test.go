@@ -12,25 +12,22 @@ import (
 
 func TestRestore(t *T) {
 
-	c, err := db.RedisPool.Get()
-	require.Nil(t, err)
-
 	// Add an item to claimed list and call validateClaimedEvents. Since it
 	// doesn't have a lock it should be moved to the unclaimed list
 	q := clients.RandQueueName()
 	unclaimedKey := db.UnclaimedKey(q)
 	claimedKey := db.ClaimedKey(q)
 	itemsKey := db.ItemsKey(q)
-	require.Nil(t, c.Cmd("HSET", itemsKey, "foo", "bar").Err)
-	require.Nil(t, c.Cmd("LPUSH", claimedKey, "foo").Err)
+	require.Nil(t, db.Cmd("HSET", itemsKey, "foo", "bar").Err)
+	require.Nil(t, db.Cmd("LPUSH", claimedKey, "foo").Err)
 
 	validateClaimedEvents()
 
-	l, err := c.Cmd("LRANGE", claimedKey, 0, -1).List()
+	l, err := db.Cmd("LRANGE", claimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Empty(t, l)
 
-	l, err = c.Cmd("LRANGE", unclaimedKey, 0, -1).List()
+	l, err = db.Cmd("LRANGE", unclaimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Equal(t, []string{"foo"}, l)
 }
@@ -42,25 +39,22 @@ func TestRestore(t *T) {
 // unclaimed queue in this case
 func TestRestoreRace(t *T) {
 
-	c, err := db.RedisPool.Get()
-	require.Nil(t, err)
-
 	q := clients.RandQueueName()
 	unclaimedKey := db.UnclaimedKey(q)
 	claimedKey := db.ClaimedKey(q)
 
-	require.Nil(t, c.Cmd("LPUSH", unclaimedKey, "buz", "boz").Err)
-	require.Nil(t, c.Cmd("LPUSH", claimedKey, "bar", "baz").Err)
+	require.Nil(t, db.Cmd("LPUSH", unclaimedKey, "buz", "boz").Err)
+	require.Nil(t, db.Cmd("LPUSH", claimedKey, "bar", "baz").Err)
 
 	// restore an event which is in the claimed list, and one which is not
-	require.Nil(t, restoreEventToQueue(c, q, "bar"))
-	require.Nil(t, restoreEventToQueue(c, q, "foo"))
+	require.Nil(t, restoreEventToQueue(q, "bar"))
+	require.Nil(t, restoreEventToQueue(q, "foo"))
 
-	l, err := c.Cmd("LRANGE", claimedKey, 0, -1).List()
+	l, err := db.Cmd("LRANGE", claimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Equal(t, []string{"baz"}, l)
 
-	l, err = c.Cmd("LRANGE", unclaimedKey, 0, -1).List()
+	l, err = db.Cmd("LRANGE", unclaimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Equal(t, []string{"boz", "buz", "bar"}, l)
 }

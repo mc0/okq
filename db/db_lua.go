@@ -21,14 +21,8 @@ var luaScripts = map[string]*lua{
 }
 
 func initLuaScripts() error {
-	redisClient, err := RedisPool.Get()
-	if err != nil {
-		return err
-	}
-	defer RedisPool.CarefullyPut(redisClient, &err)
-
 	for cmd, l := range luaScripts {
-		hash, err := redisClient.Cmd("SCRIPT", "LOAD", l.script).Str()
+		hash, err := Cmd("SCRIPT", "LOAD", l.script).Str()
 		if err != nil {
 			return fmt.Errorf("loading %s: %s", cmd, err)
 		}
@@ -45,9 +39,7 @@ func initLuaScripts() error {
 // Example:
 //
 //	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", "value")
-func Lua(
-	c *redis.Client, cmd string, numKeys int, args ...interface{},
-) *redis.Reply {
+func Lua(cmd string, numKeys int, args ...interface{}) *redis.Reply {
 
 	cmd = strings.ToUpper(cmd)
 	l, ok := luaScripts[cmd]
@@ -62,23 +54,23 @@ func Lua(
 	realArgs = append(realArgs, l.hash, numKeys)
 	realArgs = append(realArgs, args...)
 
-	r, notLoaded := luaEvalSha(c, realArgs)
+	r, notLoaded := luaEvalSha(realArgs)
 	if !notLoaded {
 		return r
 	}
 
-	if err := c.Cmd("SCRIPT", "LOAD", l.script).Err; err != nil {
+	if err := Cmd("SCRIPT", "LOAD", l.script).Err; err != nil {
 		return r
 	}
 
-	r, _ = luaEvalSha(c, realArgs)
+	r, _ = luaEvalSha(realArgs)
 	return r
 }
 
 // Performs and EVALSHA with the given args, returning the reply and whether or
 // not that reply is due to the script for that sha not being loaded yet
-func luaEvalSha(c *redis.Client, args []interface{}) (*redis.Reply, bool) {
-	r := c.Cmd("EVALSHA", args...)
+func luaEvalSha(args []interface{}) (*redis.Reply, bool) {
+	r := Cmd("EVALSHA", args...)
 	if r.Err != nil {
 		if cerr, ok := r.Err.(*redis.CmdError); ok {
 			return r, strings.HasPrefix(cerr.Error(), "NOSCRIPT")

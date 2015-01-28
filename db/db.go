@@ -6,23 +6,53 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/fzzy/radix/extra/pool"
-
-	"github.com/mc0/okq/config"
+	"github.com/fzzy/radix/redis"
 	"github.com/mc0/okq/log"
 )
 
-// A pool of redis connections which can be read from asynchronously by anyone
-var RedisPool *pool.Pool
+// These functions are filled in dynamically at runtime
+var (
+	// Cmd is a function which will perform the given cmd/args in redis and
+	// returns the reply. It automatically handles using redis cluster, if that
+	// is enabled
+	Cmd func(string, ...interface{}) *redis.Reply
+
+	// Pipe runs a set of commands (given by p) one after the other. It is *not*
+	// guaranteed that all the commands will be run on the same client. If any
+	// commands return an error the pipeline will stop and return that error.
+	// Otherwise the Reply from each command is returned in a slice
+	//
+	//	r, err := db.Pipe(
+	//		db.PP("SET", "foo", "bar"),
+	//		db.PP("GET", "foo"),
+	//	)
+	Pipe func(...*PipePart) ([]*redis.Reply, error)
+
+	// Scan is a function which returns a channel to which keys matching the
+	// given pattern are written to. The channel must be read from until it is
+	// closed, which occurs when there are no more keys or when an error has
+	// occured (this error will be logged)
+	//
+	// This should not be used in any critical paths
+	Scan func(string) <-chan string
+)
+
+// PipePart is a single command to be run in a pipe. See Pipe for an example on
+// usage
+type PipePart struct {
+	cmd  string
+	args []interface{}
+}
+
+// PP should be called NewPipePart, but that's pretty verbose. It simple returns
+// a new PipePart, to be used in a call to Pipe
+func PP(cmd string, args ...interface{}) *PipePart {
+	return &PipePart{cmd, args}
+}
 
 func init() {
-	var err error
-	log.L.Printf("connecting to redis at %s", config.RedisAddr)
-	RedisPool, err = pool.NewPool("tcp", config.RedisAddr, 200)
-	if err != nil {
-		log.L.Fatal(err)
-	}
-	if err = initLuaScripts(); err != nil {
+	normalInit()
+	if err := initLuaScripts(); err != nil {
 		log.L.Fatal(err)
 	}
 }
@@ -37,7 +67,7 @@ func queueKey(queueName string, parts ...string) string {
 // AllQueueNames returns a list of all currently active queues
 func AllQueueNames() []string {
 	var queueNames []string
-	for queueKey := range ScanWrapped(ItemsKey("*")) {
+	for queueKey := range Scan(ItemsKey("*")) {
 		keyParts := strings.Split(queueKey, ":")
 		queueName := keyParts[1]
 		queueNames = append(queueNames, queueName[1:len(queueName)-1])

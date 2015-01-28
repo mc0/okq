@@ -116,20 +116,13 @@ func qpeekgeneric(
 	interface{}, error,
 ) {
 	queueName := args[0]
-
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return nil, fmt.Errorf("QPEEK* RedisPool.Get(): %s", err)
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 	unclaimedKey := db.UnclaimedKey(queueName)
 	offset := "0"
 	if peekRight {
 		offset = "-1"
 	}
 
-	eventIDs, err := redisClient.Cmd("LRANGE", unclaimedKey, offset, offset).List()
+	eventIDs, err := db.Cmd("LRANGE", unclaimedKey, offset, offset).List()
 	if err != nil {
 		return nil, fmt.Errorf("QPEEK* LRANGE: %s", err)
 	} else if len(eventIDs) == 0 {
@@ -140,7 +133,7 @@ func qpeekgeneric(
 	itemsKey := db.ItemsKey(queueName)
 
 	var eventRaw string
-	reply := redisClient.Cmd("HGET", itemsKey, eventID)
+	reply := db.Cmd("HGET", itemsKey, eventID)
 	if reply.Type == redis.NilReply {
 		return nil, nil
 	}
@@ -168,15 +161,9 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 		noack = true
 	}
 
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return nil, fmt.Errorf("QRPOP RedisPool.Get(): %s", err)
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	reply := redisClient.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
+	reply := db.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
 	if reply.Type == redis.NilReply {
 		return nil, nil
 	}
@@ -187,13 +174,13 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 	}
 
 	lockKey := db.ItemLockKey(queueName, eventID)
-	reply = redisClient.Cmd("SET", lockKey, 1, "EX", expires, "NX")
+	reply = db.Cmd("SET", lockKey, 1, "EX", expires, "NX")
 	if err = reply.Err; err != nil {
 		return nil, fmt.Errorf("QRPOP SET: %s", err)
 	}
 
 	itemsKey := db.ItemsKey(queueName)
-	reply = redisClient.Cmd("HGET", itemsKey, eventID)
+	reply = db.Cmd("HGET", itemsKey, eventID)
 
 	var eventRaw string
 	if eventRaw, err = reply.Str(); err != nil {
@@ -208,17 +195,11 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 }
 
 func qack(client *clients.Client, args []string) (interface{}, error) {
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return nil, fmt.Errorf("QACK RedisPool.Get(): %s", err)
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 	queueName, eventID := args[0], args[1]
 	claimedKey := db.ClaimedKey(queueName)
 
 	var numRemoved int
-	numRemoved, err = redisClient.Cmd("LREM", claimedKey, -1, eventID).Int()
+	numRemoved, err := db.Cmd("LREM", claimedKey, -1, eventID).Int()
 	if err != nil {
 		return nil, fmt.Errorf("QACK LREM (claimed): %s", err)
 	}
@@ -229,7 +210,8 @@ func qack(client *clients.Client, args []string) (interface{}, error) {
 	// slow on it
 	if numRemoved == 0 {
 		unclaimedKey := db.UnclaimedKey(queueName)
-		numRemoved, err = redisClient.Cmd("LREM", unclaimedKey, -1, eventID).Int()
+		var err error
+		numRemoved, err = db.Cmd("LREM", unclaimedKey, -1, eventID).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QACK LREM (unclaimed): %s", err)
 		}
@@ -240,9 +222,11 @@ func qack(client *clients.Client, args []string) (interface{}, error) {
 	if numRemoved > 0 {
 		itemsKey := db.ItemsKey(queueName)
 		lockKey := db.ItemLockKey(queueName, eventID)
-		redisClient.Append("HDEL", itemsKey, eventID)
-		redisClient.Append("DEL", lockKey)
-		if err = drainPipeline(redisClient); err != nil {
+		_, err := db.Pipe(
+			db.PP("HDEL", itemsKey, eventID),
+			db.PP("DEL", lockKey),
+		)
+		if err != nil {
 			return nil, fmt.Errorf("QACK HDEL/DEL: %s", err)
 		}
 	}
@@ -263,16 +247,10 @@ func qpushgeneric(
 ) (
 	interface{}, error,
 ) {
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return nil, fmt.Errorf("QPUSH* RedisPool.Get(): %s", err)
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 	queueName, eventID, contents := args[0], args[1], args[2]
 	itemsKey := db.ItemsKey(queueName)
 
-	created, err := redisClient.Cmd("HSETNX", itemsKey, eventID, contents).Int()
+	created, err := db.Cmd("HSETNX", itemsKey, eventID, contents).Int()
 	if err != nil {
 		return nil, fmt.Errorf("QPUSH* HSETNX: %s", err)
 	} else if created == 0 {
@@ -286,9 +264,11 @@ func qpushgeneric(
 	}
 	channelName := db.QueueChannelNameKey(queueName)
 
-	redisClient.Append(cmd, unclaimedKey, eventID)
-	redisClient.Append("PUBLISH", channelName, eventID)
-	if err = drainPipeline(redisClient); err != nil {
+	_, err = db.Pipe(
+		db.PP(cmd, unclaimedKey, eventID),
+		db.PP("PUBLISH", channelName, eventID),
+	)
+	if err != nil {
 		return nil, fmt.Errorf("QPUSH* %s/PUBLISH: %s", cmd, err)
 	}
 
@@ -300,12 +280,6 @@ func qnotify(client *clients.Client, args []string) (interface{}, error) {
 	if err != nil {
 		return err, nil
 	}
-
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return nil, fmt.Errorf("QNOTIFY RedisPool.Get(): %s", err)
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
 
 	// ensure the NotifyCh is empty before waiting
 	queueName := ""
@@ -319,7 +293,7 @@ func qnotify(client *clients.Client, args []string) (interface{}, error) {
 		unclaimedKey := db.UnclaimedKey(queueNames[i])
 
 		var unclaimedCount int
-		unclaimedCount, err = redisClient.Cmd("LLEN", unclaimedKey).Int()
+		unclaimedCount, err = db.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
 		}
@@ -352,12 +326,6 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 		queueNames = args
 	}
 
-	redisClient, err := db.RedisPool.Get()
-	if err != nil {
-		return nil, fmt.Errorf("QSTATUS RedisPool.Get(): %s", err)
-	}
-	defer db.RedisPool.CarefullyPut(redisClient, &err)
-
 	var queueStatuses []string
 	for i := range queueNames {
 		queueName := queueNames[i]
@@ -370,12 +338,12 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 		unclaimedKey := db.UnclaimedKey(queueName)
 		claimedKey := db.ClaimedKey(queueName)
 
-		claimedCount, err = redisClient.Cmd("LLEN", claimedKey).Int()
+		claimedCount, err := db.Cmd("LLEN", claimedKey).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QSTATUS LLEN claimed: %s", err)
 		}
 
-		availableCount, err = redisClient.Cmd("LLEN", unclaimedKey).Int()
+		availableCount, err = db.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QSTATUS LLEN unclaimed: %s", err)
 		}
