@@ -61,41 +61,16 @@ func normalScan(pattern string) <-chan string {
 	go func() {
 		defer close(retCh)
 
-		var err error
-		defer func() {
-			if err != nil {
-				log.L.Printf("normalScan(%s): %s", pattern, err)
-			}
-		}()
-
 		redisClient, err := normalPool.Get()
 		if err != nil {
+			log.L.Printf("normalScan(%s) Get(): %s", pattern, err)
 			return
 		}
 		defer normalPool.CarefullyPut(redisClient, &err)
 
-		cursor := "0"
-		for {
-			r := redisClient.Cmd("SCAN", cursor, "MATCH", pattern)
-			if err = r.Err; err != nil {
-				return
-			}
-
-			var results []string
-			results, err = r.Elems[1].List()
-			if err != nil {
-				return
-			}
-
-			for i := range results {
-				retCh <- results[i]
-			}
-
-			if cursor, err = r.Elems[0].Str(); err != nil {
-				return
-			} else if cursor == "0" {
-				return
-			}
+		if err = scanHelper(redisClient, pattern, retCh); err != nil {
+			log.L.Printf("normalScan(%s) scanHelper: %s", pattern, err)
+			return
 		}
 	}()
 

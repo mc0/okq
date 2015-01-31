@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/fzzy/radix/redis"
+	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"
 )
 
@@ -51,7 +52,11 @@ func PP(cmd string, args ...interface{}) *PipePart {
 }
 
 func init() {
-	normalInit()
+	if config.RedisCluster {
+		clusterInit()
+	} else {
+		normalInit()
+	}
 	if err := initLuaScripts(); err != nil {
 		log.L.Fatal(err)
 	}
@@ -133,4 +138,29 @@ func GetQueueNameFromKey(key string) (string, error) {
 	queueName := queueNamePart[1 : len(queueNamePart)-1]
 
 	return queueName, nil
+}
+
+func scanHelper(redisClient *redis.Client, pattern string, retCh chan string) error {
+	cursor := "0"
+	for {
+		r := redisClient.Cmd("SCAN", cursor, "MATCH", pattern)
+		if r.Err != nil {
+			return r.Err
+		}
+
+		results, err := r.Elems[1].List()
+		if err != nil {
+			return err
+		}
+
+		for i := range results {
+			retCh <- results[i]
+		}
+
+		if cursor, err = r.Elems[0].Str(); err != nil {
+			return err
+		} else if cursor == "0" {
+			return nil
+		}
+	}
 }
