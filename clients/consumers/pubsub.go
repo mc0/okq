@@ -3,11 +3,10 @@ package consumers
 import (
 	"time"
 
-	"github.com/mediocregopher/pubsubch"
-
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
+	"github.com/mediocregopher/pubsubch"
 )
 
 // This piece runs separately from the main consumer thread. Its job is to
@@ -70,6 +69,13 @@ func subSpin() {
 	}
 }
 
+// subManager is responsible for adding/removing channel subscriptions in redis.
+// We do all this craziness instead of just doing a simple psubscribe so that if
+// we have a bunch of okq instances, this one will only handle the publishes for
+// the channels that the consumers connected to it actually care about. So we
+// could partition consumer group A too hit one okq instance and group B hit
+// another, and those two instances won't be stuck processing publishes that
+// they don't care about
 func subManager(subConn *pubsubch.PubSubCh, updateCh chan struct{}) {
 	lastSubscribedQueues := []string{}
 	// ensure we run immediately by filling the channel
