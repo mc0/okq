@@ -46,6 +46,10 @@ var (
 	//
 	//	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", "value")
 	Lua func(string, int, ...interface{}) *redis.Resp
+
+	// GetAddr returns any valid address of a redis instance. Useful for cases
+	// where we want to create redis connections external to this db package
+	GetAddr func() string
 )
 
 // PipePart is a single command to be run in a pipe. See Pipe for an example on
