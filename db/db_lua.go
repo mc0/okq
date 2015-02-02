@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fzzy/radix/redis"
+	"github.com/mediocregopher/radix.v2/redis"
 )
 
 type lua struct {
@@ -32,48 +32,40 @@ func initLuaScripts() error {
 	return nil
 }
 
-// Lua performs one of the preloaded Lua scripts that have been built-in. It's
-// *possible* that the script wasn't loaded in initLuaScripts() for some strange
-// reason, this tries to handle that case as well.
-//
-// Example:
-//
-//	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", "value")
-func Lua(cmd string, numKeys int, args ...interface{}) *redis.Reply {
+func luaHelper(
+	c *redis.Client, cmd string, numKeys int, args ...interface{},
+) *redis.Resp {
 
 	cmd = strings.ToUpper(cmd)
 	l, ok := luaScripts[cmd]
 	if !ok {
-		return &redis.Reply{
-			Type: redis.ErrorReply,
-			Err:  fmt.Errorf("unknown lua script: %s", cmd),
-		}
+		return redis.NewResp(fmt.Errorf("unknown lua script: %s", cmd))
 	}
 
 	realArgs := make([]interface{}, 0, len(args)+2)
 	realArgs = append(realArgs, l.hash, numKeys)
 	realArgs = append(realArgs, args...)
 
-	r, notLoaded := luaEvalSha(realArgs)
+	r, notLoaded := luaEvalSha(c, realArgs)
 	if !notLoaded {
 		return r
 	}
 
-	if err := Cmd("SCRIPT", "LOAD", l.script).Err; err != nil {
+	if err := c.Cmd("SCRIPT", "LOAD", l.script).Err; err != nil {
 		return r
 	}
 
-	r, _ = luaEvalSha(realArgs)
+	r, _ = luaEvalSha(c, realArgs)
 	return r
 }
 
 // Performs and EVALSHA with the given args, returning the reply and whether or
 // not that reply is due to the script for that sha not being loaded yet
-func luaEvalSha(args []interface{}) (*redis.Reply, bool) {
-	r := Cmd("EVALSHA", args...)
+func luaEvalSha(c *redis.Client, args []interface{}) (*redis.Resp, bool) {
+	r := c.Cmd("EVALSHA", args...)
 	if r.Err != nil {
-		if cerr, ok := r.Err.(*redis.CmdError); ok {
-			return r, strings.HasPrefix(cerr.Error(), "NOSCRIPT")
+		if r.IsType(redis.AppErr) {
+			return r, strings.HasPrefix(r.Err.Error(), "NOSCRIPT")
 		}
 	}
 	return r, false

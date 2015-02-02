@@ -6,10 +6,9 @@ package restore
 import (
 	"time"
 
-	"github.com/fzzy/radix/redis"
-
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
+	"github.com/mediocregopher/radix.v2/redis"
 )
 
 func init() {
@@ -74,7 +73,7 @@ func restoreEventToQueue(queueName string, eventID string) error {
 		log.L.Printf("set failed for restoring %q", reply.Err)
 		return reply.Err
 	}
-	if reply.Type == redis.NilReply {
+	if reply.IsType(redis.Nil) {
 		log.L.Debug("%s restored already", eventID)
 		return nil
 	}

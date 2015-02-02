@@ -6,7 +6,7 @@ import (
 	. "testing"
 	"time"
 
-	"github.com/fzzy/radix/redis/resp"
+	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,30 +14,34 @@ import (
 )
 
 func readAndAssertStr(t *T, client *clients.Client, expected string) {
-	m, err := resp.ReadMessage(client.Conn)
-	require.Nil(t, err, "stack:\n%s", debug.Stack())
+	rr := redis.NewRespReader(client.Conn)
+	m := rr.Read()
+	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
 	s, err := m.Str()
 	require.Nil(t, err, "stack:\n%s", debug.Stack())
 	assert.Equal(t, expected, s, "m: %v stack:\n%s", m, debug.Stack())
 }
 
 func readAndAssertInt(t *T, client *clients.Client, expected int64) {
-	m, err := resp.ReadMessage(client.Conn)
-	require.Nil(t, err, "stack:\n%s", debug.Stack())
+	rr := redis.NewRespReader(client.Conn)
+	m := rr.Read()
+	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
 	i, err := m.Int()
 	require.Nil(t, err, "stack:\n%s", debug.Stack())
 	assert.Equal(t, expected, i, "m: %v stack:\n%s", m, debug.Stack())
 }
 
 func readAndAssertNil(t *T, client *clients.Client) {
-	m, err := resp.ReadMessage(client.Conn)
-	require.Nil(t, err, "stack:\n%s", debug.Stack())
-	assert.Equal(t, resp.Nil, m.Type, "m: %v stack:\n%s", m, debug.Stack())
+	rr := redis.NewRespReader(client.Conn)
+	m := rr.Read()
+	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
+	assert.Equal(t, true, m.IsType(redis.Nil), "m: %v stack:\n%s", m, debug.Stack())
 }
 
 func readAndAssertArr(t *T, client *clients.Client, expected []string) {
-	m, err := resp.ReadMessage(client.Conn)
-	require.Nil(t, err, "stack:\n%s", debug.Stack())
+	rr := redis.NewRespReader(client.Conn)
+	m := rr.Read()
+	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
 
 	arr, err := m.Array()
 	require.Nil(t, err, "stack:\n%s", debug.Stack())

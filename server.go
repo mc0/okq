@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"math/rand"
 	"net"
 	"time"
-
-	"github.com/fzzy/radix/redis/resp"
 
 	"github.com/mc0/okq/clients"
 	"github.com/mc0/okq/clients/consumers"
@@ -14,6 +12,7 @@ import (
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"
 	_ "github.com/mc0/okq/restore"
+	"github.com/mediocregopher/radix.v2/redis"
 )
 
 func main() {
@@ -50,20 +49,20 @@ func acceptConns(listener net.Listener, incomingConns chan net.Conn) {
 	}
 }
 
+var invalidCmdResp = redis.NewResp(errors.New("ERR invalid command"))
+
 func serveClient(client *clients.Client) {
 	conn := client.Conn
+	rr := redis.NewRespReader(conn)
 
 outer:
 	for {
-		m, err := resp.ReadMessage(conn)
 		var command string
 		var args []string
 
-		if err != nil {
-			if t, ok := err.(*net.OpError); ok && t.Timeout() {
-				continue
-			}
-			log.L.Debug(client.Sprintf("client connection error %q", err))
+		m := rr.Read()
+		if m.IsType(redis.IOErr) {
+			log.L.Debug(client.Sprintf("client connection error %q", m.Err))
 			if len(client.Queues) > 0 {
 				consumers.UpdateQueues(client, []string{})
 			}
@@ -74,14 +73,13 @@ outer:
 		parts, err := m.Array()
 		if err != nil {
 			log.L.Debug(client.Sprintf("error parsing to array: %q", err))
-			resp.WriteArbitrary(conn, fmt.Errorf("ERR invalid command"))
 			continue outer
 		}
 		for i := range parts {
 			val, err := parts[i].Str()
 			if err != nil {
 				log.L.Debug(client.Sprintf("invalid command part %#v: %s", parts[i], err))
-				resp.WriteArbitrary(conn, fmt.Errorf("ERR invalid command"))
+				invalidCmdResp.WriteTo(conn)
 				continue outer
 			}
 			if i == 0 {

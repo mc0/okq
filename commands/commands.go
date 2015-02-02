@@ -9,13 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fzzy/radix/redis"
-	"github.com/fzzy/radix/redis/resp"
-
 	"github.com/mc0/okq/clients"
 	"github.com/mc0/okq/clients/consumers"
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
+	"github.com/mediocregopher/radix.v2/redis"
 )
 
 type commandFunc func(*clients.Client, []string) (interface{}, error)
@@ -38,7 +36,7 @@ var commandMap = map[string]commandInfo{
 	"PING":      {ping, 0},
 }
 
-var okSS = resp.NewSimpleString("OK")
+var okSS = redis.NewRespSimple("OK")
 
 // Dispatch takes in a client whose command has already been read off the
 // socket, a list of arguments from that command (not including the command name
@@ -62,7 +60,7 @@ func Dispatch(client *clients.Client, cmd string, args []string) {
 		return
 	}
 
-	resp.WriteArbitrary(client.Conn, ret)
+	redis.NewResp(ret).WriteTo(client.Conn)
 }
 
 func parseInt(from, as string) (int, error) {
@@ -77,8 +75,8 @@ func parseInt(from, as string) (int, error) {
 
 func drainPipeline(redisClient *redis.Client) error {
 	for {
-		err := redisClient.GetReply().Err
-		if err == redis.PipelineQueueEmptyError {
+		err := redisClient.PipeResp().Err
+		if err == redis.ErrPipelineEmpty {
 			break
 		} else if err != nil {
 			return err
@@ -87,9 +85,9 @@ func drainPipeline(redisClient *redis.Client) error {
 	return nil
 }
 
-func writeErrf(w io.Writer, format string, args ...interface{}) error {
+func writeErrf(w io.Writer, format string, args ...interface{}) {
 	err := fmt.Errorf(format, args...)
-	return resp.WriteArbitrary(w, err)
+	redis.NewResp(err).WriteTo(w)
 }
 
 func qregister(client *clients.Client, args []string) (interface{}, error) {
@@ -134,7 +132,7 @@ func qpeekgeneric(
 
 	var eventRaw string
 	reply := db.Cmd("HGET", itemsKey, eventID)
-	if reply.Type == redis.NilReply {
+	if reply.IsType(redis.Nil) {
 		return nil, nil
 	}
 	if eventRaw, err = reply.Str(); err != nil {
@@ -164,7 +162,7 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
 	reply := db.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
-	if reply.Type == redis.NilReply {
+	if reply.IsType(redis.Nil) {
 		return nil, nil
 	}
 
@@ -365,8 +363,8 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 	return queueStatuses, nil
 }
 
-var pong = resp.NewSimpleString("PONG")
+var pongSS = redis.NewRespSimple("PONG")
 
 func ping(client *clients.Client, args []string) (interface{}, error) {
-	return pong, nil
+	return pongSS, nil
 }

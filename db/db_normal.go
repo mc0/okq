@@ -1,10 +1,10 @@
 package db
 
 import (
-	"github.com/fzzy/radix/extra/pool"
-	"github.com/fzzy/radix/redis"
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"
+	"github.com/mediocregopher/radix.v2/pool"
+	"github.com/mediocregopher/radix.v2/redis"
 )
 
 var normalPool *pool.Pool
@@ -14,6 +14,7 @@ func normalInit() {
 	Cmd = normalCmd
 	Pipe = normalPipe
 	Scan = normalScan
+	Lua = normalLua
 
 	var err error
 	normalPool, err = pool.NewPool("tcp", config.RedisAddr, 200)
@@ -22,32 +23,31 @@ func normalInit() {
 	}
 }
 
-func normalCmd(cmd string, args ...interface{}) *redis.Reply {
+func normalCmd(cmd string, args ...interface{}) *redis.Resp {
 	c, err := normalPool.Get()
 	if err != nil {
-		return &redis.Reply{Type: redis.ErrorReply, Err: err}
+		return redis.NewResp(err)
 	}
 
 	r := c.Cmd(cmd, args...)
-
-	normalPool.CarefullyPut(c, &r.Err)
+	normalPool.Put(c)
 	return r
 }
 
-func normalPipe(p ...*PipePart) ([]*redis.Reply, error) {
+func normalPipe(p ...*PipePart) ([]*redis.Resp, error) {
 	c, err := normalPool.Get()
 	if err != nil {
 		return nil, err
 	}
-	defer normalPool.CarefullyPut(c, &err)
+	defer normalPool.Put(c)
 
 	for i := range p {
-		c.Append(p[i].cmd, p[i].args...)
+		c.PipeAppend(p[i].cmd, p[i].args...)
 	}
 
-	rs := make([]*redis.Reply, len(p))
+	rs := make([]*redis.Resp, len(p))
 	for i := range rs {
-		rs[i] = c.GetReply()
+		rs[i] = c.PipeResp()
 		if err = rs[i].Err; err != nil {
 			return nil, err
 		}
@@ -66,7 +66,7 @@ func normalScan(pattern string) <-chan string {
 			log.L.Printf("normalScan(%s) Get(): %s", pattern, err)
 			return
 		}
-		defer normalPool.CarefullyPut(redisClient, &err)
+		defer normalPool.Put(redisClient)
 
 		if err = scanHelper(redisClient, pattern, retCh); err != nil {
 			log.L.Printf("normalScan(%s) scanHelper: %s", pattern, err)
@@ -75,4 +75,15 @@ func normalScan(pattern string) <-chan string {
 	}()
 
 	return retCh
+}
+
+func normalLua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
+	c, err := normalPool.Get()
+	if err != nil {
+		return redis.NewResp(err)
+	}
+
+	r := luaHelper(c, cmd, numKeys, args...)
+	normalPool.Put(c)
+	return r
 }
