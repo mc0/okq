@@ -3,7 +3,6 @@ package consumers
 import (
 	"time"
 
-	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
 	"github.com/mediocregopher/pubsubch"
@@ -24,7 +23,8 @@ var updateNotifyCh = make(chan struct{}, 1)
 // passes those messages along
 func subSpin() {
 	for {
-		subConn, err := pubsubch.DialTimeout(config.RedisAddr, 2500*time.Millisecond)
+		addr := db.GetAddr()
+		subConn, err := pubsubch.DialTimeout(addr, 2500*time.Millisecond)
 		if err != nil {
 			log.L.Printf("notifyConsumers error connecting: %v", err)
 			time.Sleep(1 * time.Second)

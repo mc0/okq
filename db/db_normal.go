@@ -15,6 +15,7 @@ func normalInit() {
 	Pipe = normalPipe
 	Scan = normalScan
 	Lua = normalLua
+	GetAddr = normalGetAddr
 
 	var err error
 	normalPool, err = pool.NewPool("tcp", config.RedisAddr, 200)
@@ -86,4 +87,8 @@ func normalLua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
 	r := luaHelper(c, cmd, numKeys, args...)
 	normalPool.Put(c)
 	return r
+}
+
+func normalGetAddr() string {
+	return config.RedisAddr
 }

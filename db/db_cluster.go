@@ -15,6 +15,7 @@ func clusterInit() {
 	Pipe = clusterPipe
 	Scan = clusterScan
 	Lua = clusterLua
+	GetAddr = clusterGetAddr
 
 	var err error
 	clusterInst, err = cluster.New(config.RedisAddr)
@@ -79,4 +80,8 @@ func clusterLua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
 	defer clusterInst.Put(c)
 
 	return luaHelper(c, cmd, numKeys, args...)
+}
+
+func clusterGetAddr() string {
+	return clusterInst.GetAddrForKey("")
 }
