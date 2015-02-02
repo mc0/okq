@@ -3,9 +3,7 @@
 package config
 
 import (
-	"log" // we don't use our log because it imports this package
-
-	"github.com/mediocregopher/flagconfig"
+	"github.com/mediocregopher/lever"
 )
 
 // Variables populated by the flag parsing process at runtime
@@ -17,19 +15,32 @@ var (
 )
 
 func init() {
-	fc := flagconfig.New("redeqeue")
+	l := lever.New("okq", nil)
+	l.Add(lever.Param{
+		Name:        "--listen-addr",
+		Description: "Address to listen for client connections on",
+		Default:     ":4777",
+	})
+	l.Add(lever.Param{
+		Name:        "--redis-addr",
+		Description: "Address redis is listening on",
+		Default:     "127.0.0.1:6379",
+	})
+	l.Add(lever.Param{
+		Name:        "--redis-cluster",
+		Description: "Whether or not to treat the redis address as a node in a larger cluster",
+		Flag:        true,
+	})
+	l.Add(lever.Param{
+		Name:        "--debug",
+		Aliases:     []string{"-d"},
+		Description: "Turn on debug logging",
+		Flag:        true,
+	})
+	l.Parse()
 
-	fc.StrParam("listen-addr", "Address to listen for client connections on", ":4777")
-	fc.StrParam("redis-addr", "Address redis is listening on", "127.0.0.1:6379")
-	fc.FlagParam("redis-cluster", "Whether or not to treat the redis address as a node in a larger cluster", false)
-	fc.FlagParam("debug", "Turn on debug logging", false)
-
-	if err := fc.Parse(); err != nil {
-		log.Fatal(err)
-	}
-
-	ListenAddr = fc.GetStr("listen-addr")
-	RedisAddr = fc.GetStr("redis-addr")
-	RedisCluster = fc.GetFlag("redis-cluster")
-	Debug = fc.GetFlag("debug")
+	ListenAddr, _ = l.ParamStr("--listen-addr")
+	RedisAddr, _ = l.ParamStr("--redis-addr")
+	RedisCluster = l.ParamFlag("--redis-cluster")
+	Debug = l.ParamFlag("debug")
 }

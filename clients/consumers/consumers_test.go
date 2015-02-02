@@ -4,7 +4,7 @@ import (
 	. "testing"
 	"time"
 
-	"github.com/fzzy/radix/redis"
+	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -27,7 +27,7 @@ func TestUpdateQueues(t *T) {
 	for i := range queues {
 		key := db.ConsumersKey(queues[i])
 		res := db.Cmd("ZRANK", key, client.ID)
-		assert.Equal(t, redis.IntegerReply, res.Type, "res: %s", res)
+		assert.Equal(t, true, res.IsType(redis.Int), "res: %s", res)
 	}
 
 	err = UpdateQueues(client, queues[1:])
@@ -36,13 +36,13 @@ func TestUpdateQueues(t *T) {
 	// Make sure the first queue had this clientId removed from it
 	key := db.ConsumersKey(queues[0])
 	res := db.Cmd("ZRANK", key, client.ID)
-	assert.Equal(t, redis.NilReply, res.Type, "res: %s", res)
+	assert.Equal(t, true, res.IsType(redis.Nil), "res: %s", res)
 
 	// Make sure the rest of the queues still have it
 	for i := range queues[1:] {
 		key := db.ConsumersKey(queues[1:][i])
 		res := db.Cmd("ZRANK", key, client.ID)
-		assert.Equal(t, redis.IntegerReply, res.Type, "res: %s", res)
+		assert.Equal(t, true, res.IsType(redis.Int), "res: %s", res)
 	}
 
 	err = UpdateQueues(client, []string{})
@@ -52,7 +52,7 @@ func TestUpdateQueues(t *T) {
 	for i := range queues {
 		key := db.ConsumersKey(queues[i])
 		res := db.Cmd("ZRANK", key, client.ID)
-		assert.Equal(t, redis.NilReply, res.Type, "res: %s", res)
+		assert.Equal(t, true, res.IsType(redis.Nil), "res: %s", res)
 	}
 }
 
@@ -66,7 +66,7 @@ func TestStaleCleanup(t *T) {
 	// Make sure the queue has this clientId as a consumer
 	key := db.ConsumersKey(queue)
 	res := db.Cmd("ZRANK", key, client.ID)
-	assert.Equal(t, redis.IntegerReply, res.Type, "res: %s", res)
+	assert.Equal(t, true, res.IsType(redis.Int), "res: %s", res)
 
 	// Remove all knowledge about this client from the consumer state
 	callCh <- func(s *state) {
@@ -80,5 +80,5 @@ func TestStaleCleanup(t *T) {
 
 	// Make sure this client is no longer a consumer
 	res = db.Cmd("ZRANK", key, client.ID)
-	assert.Equal(t, redis.NilReply, res.Type, "key: %s clientId: %s res: %s", key, client.ID, res)
+	assert.Equal(t, true, res.IsType(redis.Nil), "key: %s clientId: %s res: %s", key, client.ID, res)
 }

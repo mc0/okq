@@ -6,28 +6,28 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/fzzy/radix/redis"
 	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/log"
+	"github.com/mediocregopher/radix.v2/redis"
 )
 
 // These functions are filled in dynamically at runtime
 var (
 	// Cmd is a function which will perform the given cmd/args in redis and
-	// returns the reply. It automatically handles using redis cluster, if that
+	// returns the resp. It automatically handles using redis cluster, if that
 	// is enabled
-	Cmd func(string, ...interface{}) *redis.Reply
+	Cmd func(string, ...interface{}) *redis.Resp
 
 	// Pipe runs a set of commands (given by p) one after the other. It is *not*
 	// guaranteed that all the commands will be run on the same client. If any
 	// commands return an error the pipeline will stop and return that error.
-	// Otherwise the Reply from each command is returned in a slice
+	// Otherwise the Resp from each command is returned in a slice
 	//
 	//	r, err := db.Pipe(
 	//		db.PP("SET", "foo", "bar"),
 	//		db.PP("GET", "foo"),
 	//	)
-	Pipe func(...*PipePart) ([]*redis.Reply, error)
+	Pipe func(...*PipePart) ([]*redis.Resp, error)
 
 	// Scan is a function which returns a channel to which keys matching the
 	// given pattern are written to. The channel must be read from until it is
@@ -36,6 +36,16 @@ var (
 	//
 	// This should not be used in any critical paths
 	Scan func(string) <-chan string
+
+	// Lua performs one of the preloaded Lua scripts that have been built-in.
+	// It's *possible* that the script wasn't loaded in initLuaScripts() for
+	// some strange reason, this tries to handle that case as well. The integer
+	// passed in is the number of keys the command takes in
+	//
+	// Example:
+	//
+	//	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", "value")
+	Lua func(string, int, ...interface{}) *redis.Resp
 )
 
 // PipePart is a single command to be run in a pipe. See Pipe for an example on
@@ -147,8 +157,12 @@ func scanHelper(redisClient *redis.Client, pattern string, retCh chan string) er
 		if r.Err != nil {
 			return r.Err
 		}
+		elems, err := r.Array()
+		if err != nil {
+			return err
+		}
 
-		results, err := r.Elems[1].List()
+		results, err := elems[1].List()
 		if err != nil {
 			return err
 		}
@@ -157,7 +171,7 @@ func scanHelper(redisClient *redis.Client, pattern string, retCh chan string) er
 			retCh <- results[i]
 		}
 
-		if cursor, err = r.Elems[0].Str(); err != nil {
+		if cursor, err = elems[0].Str(); err != nil {
 			return err
 		} else if cursor == "0" {
 			return nil

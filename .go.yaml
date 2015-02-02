@@ -1,7 +1,7 @@
 ---
 path: github.com/mc0/okq
 deps:
-    - loc: github.com/fzzy/radix/redis
-    - loc: github.com/mediocregopher/flagconfig
+    - loc: github.com/mediocregopher/lever
     - loc: github.com/mediocregopher/pubsubch
+    - loc: github.com/mediocregopher/radix.v2
     - loc: github.com/stretchr/testify
