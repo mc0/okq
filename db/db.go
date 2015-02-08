@@ -11,12 +11,14 @@ import (
 	"github.com/mediocregopher/radix.v2/redis"
 )
 
-// These functions are filled in dynamically at runtime
-var (
+// DBer is implemented and used by the rest of okq to interact with whatever
+// backend has been chosen
+type DBer interface {
+
 	// Cmd is a function which will perform the given cmd/args in redis and
 	// returns the resp. It automatically handles using redis cluster, if that
 	// is enabled
-	Cmd func(string, ...interface{}) *redis.Resp
+	Cmd(string, ...interface{}) *redis.Resp
 
 	// Pipe runs a set of commands (given by p) one after the other. It is *not*
 	// guaranteed that all the commands will be run on the same client. If any
@@ -27,7 +29,7 @@ var (
 	//		db.PP("SET", "foo", "bar"),
 	//		db.PP("GET", "foo"),
 	//	)
-	Pipe func(...*PipePart) ([]*redis.Resp, error)
+	Pipe(...*PipePart) ([]*redis.Resp, error)
 
 	// Scan is a function which returns a channel to which keys matching the
 	// given pattern are written to. The channel must be read from until it is
@@ -35,7 +37,7 @@ var (
 	// occured (this error will be logged)
 	//
 	// This should not be used in any critical paths
-	Scan func(string) <-chan string
+	Scan(string) <-chan string
 
 	// Lua performs one of the preloaded Lua scripts that have been built-in.
 	// It's *possible* that the script wasn't loaded in initLuaScripts() for
@@ -45,12 +47,12 @@ var (
 	// Example:
 	//
 	//	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", "value")
-	Lua func(string, int, ...interface{}) *redis.Resp
+	Lua(string, int, ...interface{}) *redis.Resp
 
 	// GetAddr returns any valid address of a redis instance. Useful for cases
 	// where we want to create redis connections external to this db package
-	GetAddr func() string
-)
+	GetAddr() string
+}
 
 // PipePart is a single command to be run in a pipe. See Pipe for an example on
 // usage
@@ -65,11 +67,19 @@ func PP(cmd string, args ...interface{}) *PipePart {
 	return &PipePart{cmd, args}
 }
 
+// Inst is an instance of DBer which is automatically initialized and which is
+// what should be used by the rest of okq
+var Inst DBer
+
 func init() {
+	var err error
 	if config.RedisCluster {
-		clusterInit()
+		Inst, err = newClusterDB()
 	} else {
-		normalInit()
+		Inst, err = newNormalDB()
+	}
+	if err != nil {
+		log.L.Fatal(err)
 	}
 	if err := initLuaScripts(); err != nil {
 		log.L.Fatal(err)
@@ -86,7 +96,7 @@ func queueKey(queueName string, parts ...string) string {
 // AllQueueNames returns a list of all currently active queues
 func AllQueueNames() []string {
 	var queueNames []string
-	for queueKey := range Scan(ItemsKey("*")) {
+	for queueKey := range Inst.Scan(ItemsKey("*")) {
 		keyParts := strings.Split(queueKey, ":")
 		queueName := keyParts[1]
 		queueNames = append(queueNames, queueName[1:len(queueName)-1])

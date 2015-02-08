@@ -7,32 +7,28 @@ import (
 	"github.com/mediocregopher/radix.v2/redis"
 )
 
-var clusterInst *cluster.Cluster
+type clusterDB struct {
+	*cluster.Cluster
+}
 
-func clusterInit() {
-	log.L.Printf("connection to redis cluster at %s", config.RedisAddr)
-	Cmd = clusterCmd
-	Pipe = clusterPipe
-	Scan = clusterScan
-	Lua = clusterLua
-	GetAddr = clusterGetAddr
-
-	var err error
-	clusterInst, err = cluster.New(config.RedisAddr)
+func newClusterDB() (DBer, error) {
+	log.L.Printf("connecting to redis cluster at %s", config.RedisAddr)
+	c, err := cluster.New(config.RedisAddr)
 	if err != nil {
 		log.L.Fatal(err)
 	}
+	return &clusterDB{c}, err
 }
 
-func clusterCmd(cmd string, args ...interface{}) *redis.Resp {
-	return clusterInst.Cmd(cmd, args...)
+func (d *clusterDB) Cmd(cmd string, args ...interface{}) *redis.Resp {
+	return d.Cmd(cmd, args...)
 }
 
-func clusterPipe(p ...*PipePart) ([]*redis.Resp, error) {
+func (d *clusterDB) Pipe(p ...*PipePart) ([]*redis.Resp, error) {
 	// We can't really pipe with cluster, just do Cmd in a loop
 	ret := make([]*redis.Resp, 0, len(p))
 	for i := range p {
-		r := clusterInst.Cmd(p[i].cmd, p[i].args...)
+		r := d.Cmd(p[i].cmd, p[i].args...)
 		if r.Err != nil {
 			return nil, r.Err
 		}
@@ -41,12 +37,12 @@ func clusterPipe(p ...*PipePart) ([]*redis.Resp, error) {
 	return ret, nil
 }
 
-func clusterScan(pattern string) <-chan string {
+func (d *clusterDB) Scan(pattern string) <-chan string {
 	retCh := make(chan string)
 	go func() {
 		defer close(retCh)
 
-		redisClients, err := clusterInst.GetEvery()
+		redisClients, err := d.GetEvery()
 		if err != nil {
 			log.L.Printf("clusterScan(%s) ClientPerMaster(): %s", pattern, err)
 			return
@@ -54,7 +50,7 @@ func clusterScan(pattern string) <-chan string {
 
 		// Make sure we return all clients no matter what
 		for i := range redisClients {
-			defer clusterInst.Put(redisClients[i])
+			defer d.Put(redisClients[i])
 		}
 
 		for _, redisClient := range redisClients {
@@ -67,21 +63,21 @@ func clusterScan(pattern string) <-chan string {
 	return retCh
 }
 
-func clusterLua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
+func (d *clusterDB) Lua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
 	key, err := cluster.KeyFromArgs(args)
 	if err != nil {
 		return redis.NewResp(err)
 	}
 
-	c, err := clusterInst.GetForKey(key)
+	c, err := d.GetForKey(key)
 	if err != nil {
 		return redis.NewResp(err)
 	}
-	defer clusterInst.Put(c)
+	defer d.Put(c)
 
 	return luaHelper(c, cmd, numKeys, args...)
 }
 
-func clusterGetAddr() string {
-	return clusterInst.GetAddrForKey("")
+func (d *clusterDB) GetAddr() string {
+	return d.GetAddrForKey("")
 }

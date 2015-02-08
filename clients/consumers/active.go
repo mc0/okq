@@ -58,7 +58,7 @@ func updateActiveConsumers() error {
 	}
 
 	for _, args := range consumersArgs {
-		if err := db.Cmd("ZADD", args...).Err; err != nil {
+		if err := db.Inst.Cmd("ZADD", args...).Err; err != nil {
 			return err
 		}
 	}
@@ -72,8 +72,8 @@ func removeStaleConsumers(timeout time.Duration) error {
 	wildcardKey := db.ConsumersKey("*")
 	staleTS := time.Now().Add(timeout * -1).Unix()
 
-	for key := range db.Scan(wildcardKey) {
-		r := db.Cmd("ZREMRANGEBYSCORE", key, "-inf", staleTS)
+	for key := range db.Inst.Scan(wildcardKey) {
+		r := db.Inst.Cmd("ZREMRANGEBYSCORE", key, "-inf", staleTS)
 		if err := r.Err; err != nil {
 			return err
 		}

@@ -120,7 +120,7 @@ func qpeekgeneric(
 		offset = "-1"
 	}
 
-	eventIDs, err := db.Cmd("LRANGE", unclaimedKey, offset, offset).List()
+	eventIDs, err := db.Inst.Cmd("LRANGE", unclaimedKey, offset, offset).List()
 	if err != nil {
 		return nil, fmt.Errorf("QPEEK* LRANGE: %s", err)
 	} else if len(eventIDs) == 0 {
@@ -131,7 +131,7 @@ func qpeekgeneric(
 	itemsKey := db.ItemsKey(queueName)
 
 	var eventRaw string
-	reply := db.Cmd("HGET", itemsKey, eventID)
+	reply := db.Inst.Cmd("HGET", itemsKey, eventID)
 	if reply.IsType(redis.Nil) {
 		return nil, nil
 	}
@@ -161,7 +161,7 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	reply := db.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
+	reply := db.Inst.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
 	if reply.IsType(redis.Nil) {
 		return nil, nil
 	}
@@ -172,13 +172,13 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 	}
 
 	lockKey := db.ItemLockKey(queueName, eventID)
-	reply = db.Cmd("SET", lockKey, 1, "EX", expires, "NX")
+	reply = db.Inst.Cmd("SET", lockKey, 1, "EX", expires, "NX")
 	if err = reply.Err; err != nil {
 		return nil, fmt.Errorf("QRPOP SET: %s", err)
 	}
 
 	itemsKey := db.ItemsKey(queueName)
-	reply = db.Cmd("HGET", itemsKey, eventID)
+	reply = db.Inst.Cmd("HGET", itemsKey, eventID)
 
 	var eventRaw string
 	if eventRaw, err = reply.Str(); err != nil {
@@ -197,7 +197,7 @@ func qack(client *clients.Client, args []string) (interface{}, error) {
 	claimedKey := db.ClaimedKey(queueName)
 
 	var numRemoved int
-	numRemoved, err := db.Cmd("LREM", claimedKey, -1, eventID).Int()
+	numRemoved, err := db.Inst.Cmd("LREM", claimedKey, -1, eventID).Int()
 	if err != nil {
 		return nil, fmt.Errorf("QACK LREM (claimed): %s", err)
 	}
@@ -209,7 +209,7 @@ func qack(client *clients.Client, args []string) (interface{}, error) {
 	if numRemoved == 0 {
 		unclaimedKey := db.UnclaimedKey(queueName)
 		var err error
-		numRemoved, err = db.Cmd("LREM", unclaimedKey, -1, eventID).Int()
+		numRemoved, err = db.Inst.Cmd("LREM", unclaimedKey, -1, eventID).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QACK LREM (unclaimed): %s", err)
 		}
@@ -220,7 +220,7 @@ func qack(client *clients.Client, args []string) (interface{}, error) {
 	if numRemoved > 0 {
 		itemsKey := db.ItemsKey(queueName)
 		lockKey := db.ItemLockKey(queueName, eventID)
-		_, err := db.Pipe(
+		_, err := db.Inst.Pipe(
 			db.PP("HDEL", itemsKey, eventID),
 			db.PP("DEL", lockKey),
 		)
@@ -248,7 +248,7 @@ func qpushgeneric(
 	queueName, eventID, contents := args[0], args[1], args[2]
 	itemsKey := db.ItemsKey(queueName)
 
-	created, err := db.Cmd("HSETNX", itemsKey, eventID, contents).Int()
+	created, err := db.Inst.Cmd("HSETNX", itemsKey, eventID, contents).Int()
 	if err != nil {
 		return nil, fmt.Errorf("QPUSH* HSETNX: %s", err)
 	} else if created == 0 {
@@ -262,7 +262,7 @@ func qpushgeneric(
 	}
 	channelName := db.QueueChannelNameKey(queueName)
 
-	_, err = db.Pipe(
+	_, err = db.Inst.Pipe(
 		db.PP(cmd, unclaimedKey, eventID),
 		db.PP("PUBLISH", channelName, eventID),
 	)
@@ -291,7 +291,7 @@ func qnotify(client *clients.Client, args []string) (interface{}, error) {
 		unclaimedKey := db.UnclaimedKey(queueNames[i])
 
 		var unclaimedCount int
-		unclaimedCount, err = db.Cmd("LLEN", unclaimedKey).Int()
+		unclaimedCount, err = db.Inst.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
 		}
@@ -336,12 +336,12 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 		unclaimedKey := db.UnclaimedKey(queueName)
 		claimedKey := db.ClaimedKey(queueName)
 
-		claimedCount, err := db.Cmd("LLEN", claimedKey).Int()
+		claimedCount, err := db.Inst.Cmd("LLEN", claimedKey).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QSTATUS LLEN claimed: %s", err)
 		}
 
-		availableCount, err = db.Cmd("LLEN", unclaimedKey).Int()
+		availableCount, err = db.Inst.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
 			return nil, fmt.Errorf("QSTATUS LLEN unclaimed: %s", err)
 		}

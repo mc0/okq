@@ -120,7 +120,7 @@ func UpdateQueues(client *clients.Client, queues []string) error {
 			pipe = append(pipe, db.PP("ZADD", consumersKey, ts, client.ID))
 		}
 
-		_, err := db.Pipe(pipe...)
+		_, err := db.Inst.Pipe(pipe...)
 		respCh <- err
 	}
 	return <-respCh
@@ -164,6 +164,6 @@ outer:
 func QueueConsumerCount(queue string) (int64, error) {
 	consumersKey := db.ConsumersKey(queue)
 
-	i, err := db.Cmd("ZCARD", consumersKey).Int64()
+	i, err := db.Inst.Cmd("ZCARD", consumersKey).Int64()
 	return i, err
 }

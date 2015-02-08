@@ -15,11 +15,11 @@ func TestScan(t *T) {
 	}
 
 	for key := range keys {
-		require.Nil(t, Cmd("SET", key, key).Err)
+		require.Nil(t, Inst.Cmd("SET", key, key).Err)
 	}
 
 	output := map[string]struct{}{}
-	for r := range Scan("scantest:*") {
+	for r := range Inst.Scan("scantest:*") {
 		output[r] = struct{}{}
 	}
 	assert.Equal(t, keys, output)
