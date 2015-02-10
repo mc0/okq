@@ -8,10 +8,11 @@ import (
 
 // Variables populated by the flag parsing process at runtime
 var (
-	ListenAddr   string
-	RedisAddr    string
-	RedisCluster bool
-	Debug        bool
+	ListenAddr     string
+	RedisAddr      string
+	RedisCluster   bool
+	Debug          bool
+	BGPushPoolSize int
 )
 
 func init() {
@@ -37,10 +38,16 @@ func init() {
 		Description: "Turn on debug logging",
 		Flag:        true,
 	})
+	l.Add(lever.Param{
+		Name:        "--bg-push-pool-size",
+		Description: "Number of goroutines to have processing NOBLOCK Q*PUSH commands",
+		Default:     "128",
+	})
 	l.Parse()
 
 	ListenAddr, _ = l.ParamStr("--listen-addr")
 	RedisAddr, _ = l.ParamStr("--redis-addr")
 	RedisCluster = l.ParamFlag("--redis-cluster")
 	Debug = l.ParamFlag("debug")
+	BGPushPoolSize, _ = l.ParamInt("--bg-push-pool-size")
 }

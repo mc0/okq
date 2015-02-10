@@ -50,13 +50,20 @@ client -> [event event event event] -> consumer
 
   Returns the number of events removed
 
-* QLPUSH queue eventId contents
+* QLPUSH queue eventId contents [NOBLOCK]
 
-  Add an event as the new left-most event in the queue
+  Add an event as the new left-most event in the queue.
+
+  NOBLOCK can be set to spawn a routine on the server which will push the event
+  onto the queue in the background, returning to the client as quickly as
+  possible.
 
   Returns `OK` on success
 
-* QRPUSH queue eventId contents
+  Returns an error if `NOBLOCK` is set and the okq instance is too overloaded to
+  handle the event in the background
+
+* QRPUSH queue eventId contents [NOBLOCK]
 
   See QLPUSH; except the right-most. Usually for high-priority events.
 

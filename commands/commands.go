@@ -11,6 +11,7 @@ import (
 
 	"github.com/mc0/okq/clients"
 	"github.com/mc0/okq/clients/consumers"
+	"github.com/mc0/okq/config"
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
 	"github.com/mediocregopher/radix.v2/redis"
@@ -63,6 +64,12 @@ func Dispatch(client *clients.Client, cmd string, args []string) {
 	redis.NewResp(ret).WriteTo(client.Conn)
 }
 
+func init() {
+	for i := 0; i < config.BGPushPoolSize; i++ {
+		go qpushBGSpin()
+	}
+}
+
 func parseInt(from, as string) (int, error) {
 	i, err := strconv.Atoi(from)
 	if err != nil {
@@ -71,18 +78,6 @@ func parseInt(from, as string) (int, error) {
 		return 0, fmt.Errorf("ERR bad %s value: %d < 0", as, i)
 	}
 	return i, nil
-}
-
-func drainPipeline(redisClient *redis.Client) error {
-	for {
-		err := redisClient.PipeResp().Err
-		if err == redis.ErrPipelineEmpty {
-			break
-		} else if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func writeErrf(w io.Writer, format string, args ...interface{}) {
@@ -240,12 +235,39 @@ func qrpush(client *clients.Client, args []string) (interface{}, error) {
 	return qpushgeneric(client, args, true)
 }
 
+type qpushBG struct {
+	args      []string // Arg list minus the NOBLOCK
+	pushRight bool
+}
+
+var qpushBGCh = make(chan *qpushBG)
+
+func qpushBGSpin() {
+	for q := range qpushBGCh {
+		qpushgeneric(nil, q.args, q.pushRight)
+	}
+}
+
+// If client is needed in qpushgeneric for any reason we'll have to refactor how
+// qpushBG is being handled probably
+
 func qpushgeneric(
-	client *clients.Client, args []string, pushRight bool,
+	_ *clients.Client, args []string, pushRight bool,
 ) (
 	interface{}, error,
 ) {
 	queueName, eventID, contents := args[0], args[1], args[2]
+	restArgs := args[3:]
+	if len(restArgs) > 0 && strings.ToUpper(restArgs[0]) == "NOBLOCK" {
+		coreArgs := args[:3]
+		select {
+		case qpushBGCh <- &qpushBG{coreArgs, pushRight}:
+			return okSS, nil
+		default:
+			return fmt.Errorf("ERR too busy to process NOBLOCK event"), nil
+		}
+	}
+
 	itemsKey := db.ItemsKey(queueName)
 
 	created, err := db.Cmd("HSETNX", itemsKey, eventID, contents).Int()

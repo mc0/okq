@@ -152,7 +152,7 @@ func TestPeeks(t *T) {
 	readAndAssertArr(t, client, []string{qstatusLine(queue, len(events), 0, 0)})
 }
 
-func TestRPush(t *T) {
+func TestPush(t *T) {
 	client := newClient()
 	queue := clients.RandQueueName()
 
@@ -161,6 +161,25 @@ func TestRPush(t *T) {
 
 	Dispatch(client, "qrpush", []string{queue, "1", "bar"})
 	readAndAssertStr(t, client, "OK")
+
+	Dispatch(client, "qrpeek", []string{queue})
+	readAndAssertArr(t, client, []string{"1", "bar"})
+
+	Dispatch(client, "qstatus", []string{queue})
+	readAndAssertArr(t, client, []string{qstatusLine(queue, 2, 0, 0)})
+}
+
+func TestPushNoBlock(t *T) {
+	client := newClient()
+	queue := clients.RandQueueName()
+
+	Dispatch(client, "qlpush", []string{queue, "0", "foo", "NOBLOCK"})
+	readAndAssertStr(t, client, "OK")
+	time.Sleep(50 * time.Millisecond)
+
+	Dispatch(client, "qrpush", []string{queue, "1", "bar", "NOBLOCK"})
+	readAndAssertStr(t, client, "OK")
+	time.Sleep(50 * time.Millisecond)
 
 	Dispatch(client, "qrpeek", []string{queue})
 	readAndAssertArr(t, client, []string{"1", "bar"})
