@@ -16,6 +16,7 @@ import (
 )
 
 var addr = flag.String("okq-addr", "localhost:4777", "Location of okq instance to test")
+var noBlock = flag.Bool("no-block", false, "Whether to set NOBLOCK when pushing events")
 
 func randString() string {
 	b := make([]byte, 16)
@@ -43,34 +44,35 @@ func main() {
 		}
 	}()
 
+	fn := func(e *okq.Event) bool {
+		return true
+	}
+
+	pushFlag := okq.Normal
+	if *noBlock {
+		log.Println("using NOBLOCK")
+		pushFlag = okq.NoBlock
+	}
 	for i := 0; i < n; i++ {
 		go func() {
 			cl := okq.New(*addr)
 			for {
-				if err := cl.Push(<-queueCh, randString()); err != nil {
+				err := cl.Push(<-queueCh, randString(), pushFlag)
+				if err != nil {
 					log.Fatal(err)
 				}
 			}
 		}()
 	}
 
-	ch := make(chan *okq.ConsumerEvent)
 	for i := 0; i < n; i++ {
 		go func() {
 			cl := okq.New(*addr)
 			for {
-				err := cl.Consumer(ch, nil, qs...)
+				err := cl.Consumer(fn, nil, qs...)
 				if err != nil {
 					log.Printf("got error consuming: %s", err)
 				}
-			}
-		}()
-	}
-
-	for i := 0; i < n; i++ {
-		go func() {
-			for a := range ch {
-				a.Ack()
 			}
 		}()
 	}

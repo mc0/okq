@@ -18,8 +18,8 @@ import (
 )
 
 var addr = flag.String("okq-addr", "localhost:4777", "Location of okq instance to test")
+var noBlock = flag.Bool("no-block", false, "Whether to set NOBLOCK when pushing events")
 var stopCh = make(chan bool)
-var wg sync.WaitGroup
 
 func randString() string {
 	b := make([]byte, 16)
@@ -52,6 +52,11 @@ func main() {
 		triggerJobCh <- true
 	}
 
+	pushFlag := okq.Normal
+	if *noBlock {
+		log.Println("using NOBLOCK")
+		pushFlag = okq.NoBlock
+	}
 	for i := 0; i < n; i++ {
 		go func() {
 			cl := okq.New(*addr)
@@ -60,55 +65,35 @@ func main() {
 				if err != nil {
 					log.Fatal(err)
 				}
-				if err := cl.Push(<-queueCh, string(eventB)); err != nil {
+				err = cl.Push(<-queueCh, string(eventB), pushFlag)
+				if err != nil {
 					log.Fatal(err)
 				}
 			}
 		}()
 	}
 
-	ch := make(chan *okq.ConsumerEvent)
+	fn := func(e *okq.Event) bool {
+		eventB := []byte(e.Contents)
+		var then time.Time
+		if err := then.UnmarshalBinary(eventB); err != nil {
+			log.Fatal(err)
+		}
+		agg.Agg("event", time.Since(then).Seconds())
+		triggerJobCh <- true
+		return true
+	}
+
 	var chwg sync.WaitGroup
 	for i := 0; i < n; i++ {
 		chwg.Add(1)
 		go func() {
 			cl := okq.New(*addr)
-			myCh := make(chan *okq.ConsumerEvent)
-			go func() {
-				for a := range myCh {
-					ch <- a
-				}
-				chwg.Done()
-			}()
-			err := cl.Consumer(myCh, stopCh, qs...)
+			err := cl.Consumer(fn, stopCh, qs...)
 			if err != nil {
 				log.Fatalf("got error consuming: %s", err)
 			}
 		}()
 	}
-	go func() {
-		chwg.Wait()
-		close(ch)
-	}()
-
-	for i := 0; i < n; i++ {
-		go func() {
-			wg.Add(1)
-			for a := range ch {
-				a.Ack()
-
-				eventB := []byte(a.Event.Contents)
-				var then time.Time
-				if err := then.UnmarshalBinary(eventB); err != nil {
-					log.Fatal(err)
-				}
-				agg.Agg("event", time.Since(then).Seconds())
-
-				triggerJobCh <- true
-			}
-			wg.Done()
-		}()
-	}
-
-	select {}
+	chwg.Wait()
 }
