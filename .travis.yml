@@ -1,0 +1,8 @@
+language: go
+
+go:
+  - tip
+notifications:
+  email: false
+services:
+  - redis-server
