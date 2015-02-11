@@ -80,6 +80,13 @@ func parseInt(from, as string) (int, error) {
 	return i, nil
 }
 
+func isEqualUpper(expected, actual string) bool {
+	if expected == actual {
+		return true
+	}
+	return strings.ToUpper(actual) == expected
+}
+
 func writeErrf(w io.Writer, format string, args ...interface{}) {
 	err := fmt.Errorf(format, args...)
 	redis.NewResp(err).WriteTo(w)
@@ -144,13 +151,13 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 
 	noack := false
 	args = args[1:]
-	if len(args) > 1 && strings.ToUpper(args[0]) == "EX" {
+	if len(args) > 1 && isEqualUpper("EX", args[0]) {
 		if expires, err = parseInt(args[1], "expires"); err != nil {
 			return err, nil
 		}
 		args = args[2:]
 	}
-	if len(args) > 0 && strings.ToUpper(args[0]) == "NOACK" {
+	if len(args) > 0 && isEqualUpper("NOACK", args[0]) {
 		noack = true
 	}
 
@@ -258,7 +265,7 @@ func qpushgeneric(
 ) {
 	queueName, eventID, contents := args[0], args[1], args[2]
 	restArgs := args[3:]
-	if len(restArgs) > 0 && strings.ToUpper(restArgs[0]) == "NOBLOCK" {
+	if len(restArgs) > 0 && isEqualUpper("NOBLOCK", restArgs[0]) {
 		coreArgs := args[:3]
 		select {
 		case qpushBGCh <- &qpushBG{coreArgs, pushRight}:
