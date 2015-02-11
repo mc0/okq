@@ -6,6 +6,8 @@ A simple go-based reliable event queueing with at-least-once support.
 The underlying data storage is [Redis](http://redis.io) and the protocol is [RESP](http://redis.io/topics/protocol).
 This allows swapping connecting directly to the service from any redis client.
 
+[![Build Status](https://travis-ci.org/mc0/okq.svg?branch=master)](https://travis-ci.org/mc0/okq)
+
 Commands
 --------
 
