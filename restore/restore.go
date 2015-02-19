@@ -33,7 +33,7 @@ func validateClaimedEvents() {
 
 		// get the presumably oldest 50 items
 		var eventIDs []string
-		eventIDs, err := db.Cmd("LRANGE", claimedKey, -50, -1).List()
+		eventIDs, err := db.Inst.Cmd("LRANGE", claimedKey, -50, -1).List()
 		if err != nil {
 			log.L.Printf("ERR lrange redis replied %q", err)
 			return
@@ -48,7 +48,7 @@ func validateClaimedEvents() {
 		}
 
 		var locksList [][]byte
-		locksList, err = db.Cmd("MGET", locks...).ListBytes()
+		locksList, err = db.Inst.Cmd("MGET", locks...).ListBytes()
 		if err != nil {
 			log.L.Printf("ERR mget redis replied %q", err)
 			return
@@ -68,7 +68,7 @@ func validateClaimedEvents() {
 func restoreEventToQueue(queueName string, eventID string) error {
 	// Set a lock for restoring
 	restoreKey := db.ItemRestoreKey(queueName, eventID)
-	reply := db.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
+	reply := db.Inst.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
 	if reply.Err != nil {
 		log.L.Printf("set failed for restoring %q", reply.Err)
 		return reply.Err
@@ -80,6 +80,6 @@ func restoreEventToQueue(queueName string, eventID string) error {
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	r := db.Lua("LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
+	r := db.Inst.Lua("LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
 	return r.Err
 }

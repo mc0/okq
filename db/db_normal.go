@@ -7,40 +7,36 @@ import (
 	"github.com/mediocregopher/radix.v2/redis"
 )
 
-var normalPool *pool.Pool
+type normalDB struct {
+	*pool.Pool
+}
 
-func normalInit() {
+func newNormalDB() (DBer, error) {
 	log.L.Printf("connecting to redis at %s", config.RedisAddr)
-	Cmd = normalCmd
-	Pipe = normalPipe
-	Scan = normalScan
-	Lua = normalLua
-	GetAddr = normalGetAddr
-
-	var err error
-	normalPool, err = pool.NewPool("tcp", config.RedisAddr, 200)
+	p, err := pool.NewPool("tcp", config.RedisAddr, 200)
 	if err != nil {
 		log.L.Fatal(err)
 	}
+	return &normalDB{p}, err
 }
 
-func normalCmd(cmd string, args ...interface{}) *redis.Resp {
-	c, err := normalPool.Get()
+func (d *normalDB) Cmd(cmd string, args ...interface{}) *redis.Resp {
+	c, err := d.Get()
 	if err != nil {
 		return redis.NewResp(err)
 	}
 
 	r := c.Cmd(cmd, args...)
-	normalPool.Put(c)
+	d.Put(c)
 	return r
 }
 
-func normalPipe(p ...*PipePart) ([]*redis.Resp, error) {
-	c, err := normalPool.Get()
+func (d normalDB) Pipe(p ...*PipePart) ([]*redis.Resp, error) {
+	c, err := d.Get()
 	if err != nil {
 		return nil, err
 	}
-	defer normalPool.Put(c)
+	defer d.Put(c)
 
 	for i := range p {
 		c.PipeAppend(p[i].cmd, p[i].args...)
@@ -57,17 +53,17 @@ func normalPipe(p ...*PipePart) ([]*redis.Resp, error) {
 	return rs, nil
 }
 
-func normalScan(pattern string) <-chan string {
+func (d normalDB) Scan(pattern string) <-chan string {
 	retCh := make(chan string)
 	go func() {
 		defer close(retCh)
 
-		redisClient, err := normalPool.Get()
+		redisClient, err := d.Get()
 		if err != nil {
 			log.L.Printf("normalScan(%s) Get(): %s", pattern, err)
 			return
 		}
-		defer normalPool.Put(redisClient)
+		defer d.Put(redisClient)
 
 		if err = scanHelper(redisClient, pattern, retCh); err != nil {
 			log.L.Printf("normalScan(%s) scanHelper: %s", pattern, err)
@@ -78,17 +74,17 @@ func normalScan(pattern string) <-chan string {
 	return retCh
 }
 
-func normalLua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
-	c, err := normalPool.Get()
+func (d normalDB) Lua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
+	c, err := d.Get()
 	if err != nil {
 		return redis.NewResp(err)
 	}
 
 	r := luaHelper(c, cmd, numKeys, args...)
-	normalPool.Put(c)
+	d.Put(c)
 	return r
 }
 
-func normalGetAddr() string {
+func (d normalDB) GetAddr() string {
 	return config.RedisAddr
 }

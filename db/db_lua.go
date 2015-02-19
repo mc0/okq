@@ -22,7 +22,7 @@ var luaScripts = map[string]*lua{
 
 func initLuaScripts() error {
 	for cmd, l := range luaScripts {
-		hash, err := Cmd("SCRIPT", "LOAD", l.script).Str()
+		hash, err := Inst.Cmd("SCRIPT", "LOAD", l.script).Str()
 		if err != nil {
 			return fmt.Errorf("loading %s: %s", cmd, err)
 		}

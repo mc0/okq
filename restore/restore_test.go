@@ -18,16 +18,16 @@ func TestRestore(t *T) {
 	unclaimedKey := db.UnclaimedKey(q)
 	claimedKey := db.ClaimedKey(q)
 	itemsKey := db.ItemsKey(q)
-	require.Nil(t, db.Cmd("HSET", itemsKey, "foo", "bar").Err)
-	require.Nil(t, db.Cmd("LPUSH", claimedKey, "foo").Err)
+	require.Nil(t, db.Inst.Cmd("HSET", itemsKey, "foo", "bar").Err)
+	require.Nil(t, db.Inst.Cmd("LPUSH", claimedKey, "foo").Err)
 
 	validateClaimedEvents()
 
-	l, err := db.Cmd("LRANGE", claimedKey, 0, -1).List()
+	l, err := db.Inst.Cmd("LRANGE", claimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Empty(t, l)
 
-	l, err = db.Cmd("LRANGE", unclaimedKey, 0, -1).List()
+	l, err = db.Inst.Cmd("LRANGE", unclaimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Equal(t, []string{"foo"}, l)
 }
@@ -43,18 +43,18 @@ func TestRestoreRace(t *T) {
 	unclaimedKey := db.UnclaimedKey(q)
 	claimedKey := db.ClaimedKey(q)
 
-	require.Nil(t, db.Cmd("LPUSH", unclaimedKey, "buz", "boz").Err)
-	require.Nil(t, db.Cmd("LPUSH", claimedKey, "bar", "baz").Err)
+	require.Nil(t, db.Inst.Cmd("LPUSH", unclaimedKey, "buz", "boz").Err)
+	require.Nil(t, db.Inst.Cmd("LPUSH", claimedKey, "bar", "baz").Err)
 
 	// restore an event which is in the claimed list, and one which is not
 	require.Nil(t, restoreEventToQueue(q, "bar"))
 	require.Nil(t, restoreEventToQueue(q, "foo"))
 
-	l, err := db.Cmd("LRANGE", claimedKey, 0, -1).List()
+	l, err := db.Inst.Cmd("LRANGE", claimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Equal(t, []string{"baz"}, l)
 
-	l, err = db.Cmd("LRANGE", unclaimedKey, 0, -1).List()
+	l, err = db.Inst.Cmd("LRANGE", unclaimedKey, 0, -1).List()
 	require.Nil(t, err)
 	assert.Equal(t, []string{"boz", "buz", "bar"}, l)
 }
