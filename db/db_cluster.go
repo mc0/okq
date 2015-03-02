@@ -21,7 +21,7 @@ func newClusterDB() (DBer, error) {
 }
 
 func (d *clusterDB) Cmd(cmd string, args ...interface{}) *redis.Resp {
-	return d.Cmd(cmd, args...)
+	return d.Cluster.Cmd(cmd, args...)
 }
 
 func (d *clusterDB) Pipe(p ...*PipePart) ([]*redis.Resp, error) {
