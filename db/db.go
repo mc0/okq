@@ -134,13 +134,6 @@ func ItemLockKey(queueName, eventID string) string {
 	return queueKey(queueName, "lock", eventID)
 }
 
-// ItemRestoreKey returns the key which is used as a lock when restoring an
-// eventID from the claimed to unclaimed queues, so that other running okq
-// processes don't try to do the same
-func ItemRestoreKey(queueName, eventID string) string {
-	return queueKey(queueName, "restore", eventID)
-}
-
 // QueueChannelNameKey returns the name of the pubsub channel used to broadcast
 // events for the given queue
 func QueueChannelNameKey(queueName string) string {

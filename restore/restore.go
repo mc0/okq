@@ -8,7 +8,6 @@ import (
 
 	"github.com/mc0/okq/db"
 	"github.com/mc0/okq/log"
-	"github.com/mediocregopher/radix.v2/redis"
 )
 
 func init() {
@@ -66,18 +65,6 @@ func validateClaimedEvents() {
 }
 
 func restoreEventToQueue(queueName string, eventID string) error {
-	// Set a lock for restoring
-	restoreKey := db.ItemRestoreKey(queueName, eventID)
-	reply := db.Inst.Cmd("SET", restoreKey, 1, "EX", 10, "NX")
-	if reply.Err != nil {
-		log.L.Printf("set failed for restoring %q", reply.Err)
-		return reply.Err
-	}
-	if reply.IsType(redis.Nil) {
-		log.L.Debug("%s restored already", eventID)
-		return nil
-	}
-
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
 	r := db.Inst.Lua("LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
