@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"runtime/debug"
+	"strings"
 	. "testing"
 	"time"
 
@@ -12,6 +13,13 @@ import (
 
 	"github.com/mc0/okq/clients"
 )
+
+func read(t *T, client *clients.Client) *redis.Resp {
+	rr := redis.NewRespReader(client.Conn)
+	m := rr.Read()
+	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
+	return m
+}
 
 func readAndAssertStr(t *T, client *clients.Client, expected string) {
 	rr := redis.NewRespReader(client.Conn)
@@ -117,6 +125,26 @@ func TestQStatus(t *T) {
 		qstatusLine(queues[0], 0, 0, 0),
 		qstatusLine(queues[1], 0, 0, 0),
 	})
+
+	// Make sure that when a client is registered to a queue that it shows up in
+	// the full list of queues, even if it doesn't have any items
+	emptyQueue := clients.RandQueueName()
+	Dispatch(client, "qregister", []string{emptyQueue})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qstatus", []string{})
+	statuses, err := read(t, client).Array()
+	require.Nil(t, err)
+	found := 0
+	for _, statusM := range statuses {
+		l, err := statusM.Str()
+		require.Nil(t, err)
+		parts := strings.Split(l, " ")
+		require.True(t, len(parts) >= 1)
+		if parts[0] == emptyQueue {
+			found++
+		}
+	}
+	assert.Equal(t, 1, found)
 }
 
 func TestPeeks(t *T) {

@@ -93,16 +93,33 @@ func queueKey(queueName string, parts ...string) string {
 	return strings.Join(fullParts, ":")
 }
 
+// Functions used by AllQueueNames to help in finding all queues. Each will be
+// called with "*" as a parameter and used in a scan, with the resulting results
+// having their queue name extracted and included in the return
+var allQueueKeyFns = []func(string) string{
+	ItemsKey,
+	ConsumersKey,
+}
+
 // AllQueueNames returns a list of all currently active queues
 func AllQueueNames() []string {
-	var queueNames []string
-	for queueKey := range Inst.Scan(ItemsKey("*")) {
-		keyParts := strings.Split(queueKey, ":")
-		queueName := keyParts[1]
-		queueNames = append(queueNames, queueName[1:len(queueName)-1])
+	queueNames := map[string]struct{}{}
+
+	for _, keyFn := range allQueueKeyFns {
+		for queueKey := range Inst.Scan(keyFn("*")) {
+			queueName, err := GetQueueNameFromKey(queueKey)
+			if err != nil {
+				continue
+			}
+			queueNames[queueName] = struct{}{}
+		}
 	}
 
-	return queueNames
+	queueNamesSlice := make([]string, 0, len(queueNames))
+	for queueName := range queueNames {
+		queueNamesSlice = append(queueNamesSlice, queueName)
+	}
+	return queueNamesSlice
 }
 
 // UnclaimedKey returns the key for the list of unclaimed eventIDs in a queue
