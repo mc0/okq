@@ -73,6 +73,16 @@ client -> [event event event event] -> consumer
 
   Returns a queue's name or nil if no events were available.
 
+* QFLUSH queue
+
+  Removes all events from the given queue.
+
+  Effictively makes it as if the given queue never existed. Any events in the
+  process of being consumed from the given queue may still complete, but if they
+  do not complete they will not be added back to the queue.
+
+  Returns `OK` on success
+
 * QSTATUS [queue ...]
 
   Get the status of the given queues (or all active queues, if none are given)

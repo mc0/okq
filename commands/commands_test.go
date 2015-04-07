@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mc0/okq/clients"
+	"github.com/mc0/okq/db"
 )
 
 func read(t *T, client *clients.Client) *redis.Resp {
@@ -235,4 +236,42 @@ func TestQNotify(t *T) {
 
 	Dispatch(client, "qnotify", []string{"10"})
 	readAndAssertStr(t, client, queue)
+}
+
+func TestQFlush(t *T) {
+	client := newClient()
+	queue := clients.RandQueueName()
+
+	// Ensure adding a single event to a queue and then flushing destroys it
+	Dispatch(client, "qlpush", []string{queue, "0", "foo"})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qflush", []string{queue})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qstatus", []string{queue})
+	readAndAssertArr(t, client, []string{qstatusLine(queue, 0, 0, 0)})
+
+	// Ensure adding a multiple items, having one in the claimed queue, and then
+	// flushing still destroys everything
+	Dispatch(client, "qlpush", []string{queue, "0", "foo"})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qlpush", []string{queue, "1", "foo"})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qrpop", []string{queue})
+	readAndAssertArr(t, client, []string{"0", "foo"})
+	Dispatch(client, "qflush", []string{queue})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qstatus", []string{queue})
+	readAndAssertArr(t, client, []string{qstatusLine(queue, 0, 0, 0)})
+
+	// Make sure the actual redis keys are destroyed
+	keys := []string{
+		db.UnclaimedKey(queue),
+		db.ClaimedKey(queue),
+		db.ItemsKey(queue),
+	}
+	for _, key := range keys {
+		exists, err := db.Inst.Cmd("EXISTS", key).Int()
+		assert.Nil(t, err)
+		assert.Equal(t, 0, exists)
+	}
 }

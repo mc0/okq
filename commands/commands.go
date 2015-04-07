@@ -33,6 +33,7 @@ var commandMap = map[string]commandInfo{
 	"QLPUSH":    {qlpush, 3},
 	"QRPUSH":    {qrpush, 3},
 	"QNOTIFY":   {qnotify, 1},
+	"QFLUSH":    {qflush, 1},
 	"QSTATUS":   {qstatus, 0},
 	"PING":      {ping, 0},
 }
@@ -343,6 +344,19 @@ func qnotify(client *clients.Client, args []string) (interface{}, error) {
 	}
 
 	return nil, nil
+}
+
+func qflush(client *clients.Client, args []string) (interface{}, error) {
+	queue := args[0]
+	unclaimedKey := db.UnclaimedKey(queue)
+	claimedKey := db.ClaimedKey(queue)
+	itemsKey := db.ItemsKey(queue)
+
+	err := db.Inst.Cmd("DEL", unclaimedKey, claimedKey, itemsKey).Err
+	if err != nil {
+		return nil, fmt.Errorf("QFLUSH DEL: %s", err)
+	}
+	return okSS, nil
 }
 
 func qstatus(client *clients.Client, args []string) (interface{}, error) {
