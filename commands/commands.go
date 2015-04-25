@@ -323,7 +323,7 @@ func qnotify(client *clients.Client, args []string) (interface{}, error) {
 		var unclaimedCount int
 		unclaimedCount, err = db.Inst.Cmd("LLEN", unclaimedKey).Int()
 		if err != nil {
-			return nil, fmt.Errorf("QSTATUS LLEN unclaimed): %s", err)
+			return nil, fmt.Errorf("QNOTIFY LLEN unclaimed): %s", err)
 		}
 
 		if unclaimedCount > 0 {
