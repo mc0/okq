@@ -64,7 +64,7 @@ func (d *clusterDB) Scan(pattern string) <-chan string {
 }
 
 func (d *clusterDB) Lua(cmd string, numKeys int, args ...interface{}) *redis.Resp {
-	key, err := cluster.KeyFromArgs(args)
+	key, err := redis.KeyFromArgs(args)
 	if err != nil {
 		return redis.NewResp(err)
 	}
