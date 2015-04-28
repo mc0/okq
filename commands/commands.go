@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ var commandMap = map[string]commandInfo{
 	"QNOTIFY":   {qnotify, 1},
 	"QFLUSH":    {qflush, 1},
 	"QSTATUS":   {qstatus, 0},
+	"QINFO":     {qinfo, 0},
 	"PING":      {ping, 0},
 }
 
@@ -363,11 +365,12 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 	var queueNames []string
 	if len(args) == 0 {
 		queueNames = db.AllQueueNames()
+		sort.Strings(queueNames)
 	} else {
 		queueNames = args
 	}
 
-	var queueStatuses []string
+	queueInfos := make([][]interface{}, 0, len(queueNames))
 	for i := range queueNames {
 		queueName := queueNames[i]
 
@@ -396,14 +399,98 @@ func qstatus(client *clients.Client, args []string) (interface{}, error) {
 			return nil, fmt.Errorf("QSTATUS QueueConsumerCount: %s", err)
 		}
 
-		queueStatus := fmt.Sprintf(
-			"%s total: %d processing: %d consumers: %d",
-			queueName, totalCount, claimedCount, consumerCount,
-		)
-		queueStatuses = append(queueStatuses, queueStatus)
+		queueInfos = append(queueInfos, []interface{}{
+			queueName,
+			int64(totalCount),
+			int64(claimedCount),
+			consumerCount,
+		})
 	}
 
-	return queueStatuses, nil
+	return queueInfos, nil
+}
+
+// Helper method for qinfo. Given an integer and a string or another integer,
+// returns the max of the given int and the length of the given string or the
+// string form of the given integer
+//
+//	maxLength(2, "foo", 0) // 3
+//	maxLength(2, "", 400) // 3
+//	maxLength(2, "", 4) // 2
+//
+func maxLength(oldMax int64, elStr string, elInt int64) int64 {
+	if elStrL := int64(len(elStr)); elStrL > oldMax {
+		return elStrL
+	}
+	if elIntL := int64(len(strconv.FormatInt(elInt, 10))); elIntL > oldMax {
+		return elIntL
+	}
+	return oldMax
+}
+
+// Used to temporarily hold info for the qinfo command while it figures out the
+// maximum width to make the various columns.
+type queueInfo struct {
+	queueName       string
+	totalCount      int64
+	processingCount int64
+	consumerCount   int64
+}
+
+func qinfo(client *clients.Client, args []string) (interface{}, error) {
+	queueInfosRaw, err := qstatus(client, args)
+	if err != nil {
+		return nil, err
+	}
+	queueInfosRawInt := queueInfosRaw.([][]interface{})
+
+	queueInfos := make([]queueInfo, 0, len(queueInfosRawInt))
+	var (
+		maxQueueNameLen       int64
+		maxTotalCountLen      int64
+		maxProcessingCountLen int64
+		maxConsumerCountLen   int64
+	)
+	for i := range queueInfosRawInt {
+		queueName := queueInfosRawInt[i][0].(string)
+		totalCount := queueInfosRawInt[i][1].(int64)
+		processingCount := queueInfosRawInt[i][2].(int64)
+		consumerCount := queueInfosRawInt[i][3].(int64)
+
+		queueInfos = append(queueInfos, queueInfo{
+			queueName:       queueName,
+			totalCount:      totalCount,
+			processingCount: processingCount,
+			consumerCount:   consumerCount,
+		})
+
+		maxQueueNameLen = maxLength(maxQueueNameLen, queueName, 0)
+		maxTotalCountLen = maxLength(maxTotalCountLen, "", int64(totalCount))
+		maxProcessingCountLen = maxLength(maxProcessingCountLen, "", int64(processingCount))
+		maxConsumerCountLen = maxLength(maxConsumerCountLen, "", consumerCount)
+	}
+
+	fmtStr := fmt.Sprintf(
+		"%%-%ds  total: %%-%dd  processing: %%-%dd  consumers: %%-%dd",
+		maxQueueNameLen,
+		maxTotalCountLen,
+		maxProcessingCountLen,
+		maxConsumerCountLen,
+	)
+
+	queueInfoLines := make([]string, 0, len(queueInfos))
+	for i := range queueInfos {
+		line := fmt.Sprintf(
+			fmtStr,
+			queueInfos[i].queueName,
+			queueInfos[i].totalCount,
+			queueInfos[i].processingCount,
+			queueInfos[i].consumerCount,
+		)
+		queueInfoLines = append(queueInfoLines, line)
+	}
+
+	return queueInfoLines, nil
 }
 
 var pongSS = redis.NewRespSimple("PONG")

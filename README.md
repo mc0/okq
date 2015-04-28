@@ -85,7 +85,59 @@ client -> [event event event event] -> consumer
 
 * QSTATUS [queue ...]
 
-  Get the status of the given queues (or all active queues, if none are given)
-  on the system in the format:
+  Get information about the given queues (or all active queues, if none are
+  given) on the system.
 
-    [queue] total: [total] processing: [processing] consumers: [consumers]
+  An array of arrays will be returned, for example:
+
+  ```
+  > QSTATUS foo bar
+  1) 1) "foo"
+     2) (integer) 2
+     3) (integer) 1
+     4) (integer) 3
+  2) 1) "bar"
+     2) (integer) 43
+     3) (integer) 0
+     4) (integer) 0
+  ```
+
+  The integer values returned indicate (respectively):
+
+  * total - The number of events currently held by okq for the queue, both
+    those that are awaiting a consumer and those which are actively held by a
+    consumer
+
+  * processing - The number of events for the queue which are being actively
+    held by a consumer
+
+  * consumers - The number of consumers currently registered for the queue
+
+  The returned order will match the order of the queues given in the call. If no
+  queues are given (and so information on all active queues is being returned)
+  they will be returned in ascending alphabetical order
+
+  *NOTE that there may in the future be more information returned in the
+  sub-arrays returned by this call; do not assume that they will always be of
+  length 4*
+
+* QINFO [queue ...]
+
+  Get human readable information about the given queues (or all active queues,
+  if none are given) on the system in the format:
+
+  This command effectively calls QSTATUS with the given arguments and returns
+  its output in a nicely formatted way. The returned value will be an array of
+  strings, one per queue, each formatted like so:
+
+  ```
+  > QINFO foo bar
+  foo  total: 2   processing: 1  consumers: 3
+  bar  total: 43  processing: 0  consumers: 0
+  ```
+
+  See QSTATUS for the meaning of `total`, `processing`, and `consumers`
+
+  *NOTE that this output is intended to be read by humans and its format may
+  change slightly everytime the command is called. For easily machine readable
+  output of the same data see the QSTATUS command*

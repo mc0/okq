@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"runtime/debug"
 	"strings"
 	. "testing"
@@ -63,11 +62,36 @@ func readAndAssertArr(t *T, client *clients.Client, expected []string) {
 	}
 }
 
-func qstatusLine(queue string, totalCount, claimedCount, consumerCount int) string {
-	return fmt.Sprintf(
-		"%s total: %d processing: %d consumers: %d",
-		queue, totalCount, claimedCount, consumerCount,
-	)
+func readAndAssertQStatus(t *T, client *clients.Client, expected []queueInfo) {
+	rr := redis.NewRespReader(client.Conn)
+	m := rr.Read()
+	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
+
+	arr, err := m.Array()
+	require.Nil(t, err, "stack:\n%s", debug.Stack())
+	require.Equal(t, len(expected), len(arr), "stack:\n%s", debug.Stack())
+
+	for i := range expected {
+		infoArr, err := arr[i].Array()
+		require.Nil(t, err, "stack:\n%s", debug.Stack())
+		assert.Equal(t, 4, len(infoArr), "stack:\n%s", debug.Stack())
+
+		queueName, err := infoArr[0].Str()
+		require.Nil(t, err, "stack:\n%s", debug.Stack())
+		assert.Equal(t, expected[i].queueName, queueName, "stack:\n%s", debug.Stack())
+
+		totalCount, err := infoArr[1].Int64()
+		require.Nil(t, err, "stack:\n%s", debug.Stack())
+		assert.Equal(t, expected[i].totalCount, totalCount, "stack:\n%s", debug.Stack())
+
+		processingCount, err := infoArr[2].Int64()
+		require.Nil(t, err, "stack:\n%s", debug.Stack())
+		assert.Equal(t, expected[i].processingCount, processingCount, "stack:\n%s", debug.Stack())
+
+		consumerCount, err := infoArr[3].Int64()
+		require.Nil(t, err, "stack:\n%s", debug.Stack())
+		assert.Equal(t, expected[i].consumerCount, consumerCount, "stack:\n%s", debug.Stack())
+	}
 }
 
 func newClient() *clients.Client {
@@ -122,9 +146,9 @@ func TestQStatus(t *T) {
 	}
 
 	Dispatch(client, "qstatus", queues)
-	readAndAssertArr(t, client, []string{
-		qstatusLine(queues[0], 0, 0, 0),
-		qstatusLine(queues[1], 0, 0, 0),
+	readAndAssertQStatus(t, client, []queueInfo{
+		queueInfo{queues[0], 0, 0, 0},
+		queueInfo{queues[1], 0, 0, 0},
 	})
 
 	// Make sure that when a client is registered to a queue that it shows up in
@@ -133,19 +157,55 @@ func TestQStatus(t *T) {
 	Dispatch(client, "qregister", []string{emptyQueue})
 	readAndAssertStr(t, client, "OK")
 	Dispatch(client, "qstatus", []string{})
-	statuses, err := read(t, client).Array()
+	infos, err := read(t, client).Array()
 	require.Nil(t, err)
 	found := 0
-	for _, statusM := range statuses {
-		l, err := statusM.Str()
+	for _, infoM := range infos {
+		a, err := infoM.Array()
 		require.Nil(t, err)
-		parts := strings.Split(l, " ")
-		require.True(t, len(parts) >= 1)
-		if parts[0] == emptyQueue {
+		require.True(t, len(a) == 4)
+		queueName, err := a[0].Str()
+		require.Nil(t, err)
+		if queueName == emptyQueue {
 			found++
 		}
 	}
 	assert.Equal(t, 1, found)
+}
+
+// QINFO is a human readable version of QSTATUS, so the testing of it is not
+// nearly as strenuous
+func TestQInfo(t *T) {
+	client := newClient()
+
+	// We register a queue to make sure at least one queue shows up in the
+	// results when doing a QINFO with no arguments
+	emptyQueue := clients.RandQueueName()
+	Dispatch(client, "qregister", []string{emptyQueue})
+	readAndAssertStr(t, client, "OK")
+	Dispatch(client, "qinfo", []string{})
+	infos, err := read(t, client).Array()
+	require.Nil(t, err)
+	found := 0
+	for _, infoM := range infos {
+		line, err := infoM.Str()
+		require.Nil(t, err)
+		if strings.HasPrefix(line, emptyQueue) {
+			found++
+		}
+	}
+	assert.Equal(t, 1, found)
+
+	// Now we make sure qinfo returns a line starting with the expected queue
+	// name when we give it as an argument
+	Dispatch(client, "qinfo", []string{emptyQueue})
+	infos, err = read(t, client).Array()
+	require.Nil(t, err)
+	require.Equal(t, 1, len(infos))
+
+	line, err := infos[0].Str()
+	require.Nil(t, err)
+	assert.True(t, strings.HasPrefix(line, emptyQueue))
 }
 
 func TestPeeks(t *T) {
@@ -176,9 +236,11 @@ func TestPeeks(t *T) {
 	Dispatch(client, "qlpeek", []string{queue})
 	readAndAssertArr(t, client, []string{eventLast.eventID, eventLast.event})
 
-	// Make sure the actual status of the queue hasn't been affected
+	// Make sure the queue hasn't been affected
 	Dispatch(client, "qstatus", []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, len(events), 0, 0)})
+	readAndAssertQStatus(t, client, []queueInfo{
+		queueInfo{queue, int64(len(events)), 0, 0},
+	})
 }
 
 func TestPush(t *T) {
@@ -195,7 +257,9 @@ func TestPush(t *T) {
 	readAndAssertArr(t, client, []string{"1", "bar"})
 
 	Dispatch(client, "qstatus", []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, 2, 0, 0)})
+	readAndAssertQStatus(t, client, []queueInfo{
+		queueInfo{queue, 2, 0, 0},
+	})
 }
 
 func TestPushNoBlock(t *T) {
@@ -214,7 +278,9 @@ func TestPushNoBlock(t *T) {
 	readAndAssertArr(t, client, []string{"1", "bar"})
 
 	Dispatch(client, "qstatus", []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, 2, 0, 0)})
+	readAndAssertQStatus(t, client, []queueInfo{
+		queueInfo{queue, 2, 0, 0},
+	})
 }
 
 func TestQNotify(t *T) {
@@ -248,7 +314,9 @@ func TestQFlush(t *T) {
 	Dispatch(client, "qflush", []string{queue})
 	readAndAssertStr(t, client, "OK")
 	Dispatch(client, "qstatus", []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, 0, 0, 0)})
+	readAndAssertQStatus(t, client, []queueInfo{
+		queueInfo{queue, 0, 0, 0},
+	})
 
 	// Ensure adding a multiple items, having one in the claimed queue, and then
 	// flushing still destroys everything
@@ -261,7 +329,9 @@ func TestQFlush(t *T) {
 	Dispatch(client, "qflush", []string{queue})
 	readAndAssertStr(t, client, "OK")
 	Dispatch(client, "qstatus", []string{queue})
-	readAndAssertArr(t, client, []string{qstatusLine(queue, 0, 0, 0)})
+	readAndAssertQStatus(t, client, []queueInfo{
+		queueInfo{queue, 0, 0, 0},
+	})
 
 	// Make sure the actual redis keys are destroyed
 	keys := []string{
