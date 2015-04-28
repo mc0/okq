@@ -1,5 +1,4 @@
-okQ
-=======
+# okq
 
 A simple go-based reliable event queueing with at-least-once support.
 
@@ -8,10 +7,9 @@ This allows swapping connecting directly to the service from any redis client.
 
 [![Build Status](https://travis-ci.org/mc0/okq.svg?branch=master)](https://travis-ci.org/mc0/okq)
 
-Commands
---------
+## Commands
 
-OkQ is modeled as a left-to-right queue. Clients submit events on the left
+okq is modeled as a left-to-right queue. Clients submit events on the left
 side of the queue (with `QLPUSH`, and consumers read off the right side (with
 `QRPOP`).
 
