@@ -34,7 +34,7 @@ func readAndAssertInt(t *T, client *clients.Client, expected int64) {
 	rr := redis.NewRespReader(client.Conn)
 	m := rr.Read()
 	require.Nil(t, m.Err, "stack:\n%s", debug.Stack())
-	i, err := m.Int()
+	i, err := m.Int64()
 	require.Nil(t, err, "stack:\n%s", debug.Stack())
 	assert.Equal(t, expected, i, "m: %v stack:\n%s", m, debug.Stack())
 }
