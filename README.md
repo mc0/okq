@@ -1,5 +1,7 @@
 # okq
 
+[![Join the chat at https://gitter.im/mc0/okq](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/mc0/okq?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 A simple go-based reliable event queueing with at-least-once support.
 
 The underlying data storage is [Redis](http://redis.io) and the protocol is [RESP](http://redis.io/topics/protocol).
