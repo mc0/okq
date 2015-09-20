@@ -158,10 +158,11 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 		if expires, err = parseInt(args[1], "expires"); err != nil {
 			return err, nil
 		}
-		args = args[2:]
-	}
-	if len(args) > 0 && isEqualUpper("NOACK", args[0]) {
-		noack = true
+		// The expiry of 0 is special and turns the read into at-most-once
+		if expires == 0 {
+			noack = true
+			expires = 30
+		}
 	}
 
 	unclaimedKey := db.UnclaimedKey(queueName)
