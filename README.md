@@ -5,9 +5,9 @@
 okq is a redis-backed queueing server with a focus on simplicity, both in code
 and interface.
 
-* At-least-once by default. At-most-once is supported through the `NOACK`
-  parameter when consuming events. Once successfully submitted events interacted
-  with atomically in redis; okq crashing will never result in loss of data.
+* At-least-once by default. At-most-once is supported by setting `EX` the
+  parameter to `0` when consuming events. Once successfully submitted events
+  interacted with atomically in redis; okq crashing will never result in loss of data.
 
 * Clients talk to okq using the redis protocol. So if your language has a redis
   driver you already have an okq driver as well.
@@ -163,18 +163,18 @@ on the queue (the one which will be consumed next).
 
 ### QRPOP
 
-> QRPOP queue [EX seconds] [NOACK]
+> QRPOP queue [EX seconds]
 
 Pop the right-most event off the queue.
 
 `EX seconds` determines how long the consumer has to [QACK](#qack) the event
 before it is put back onto the right side of the queue (so it will be consumed
 next) and made available to other consumers again. If not set, defaults to 30
-seconds.
+seconds. If set to `0` the event will automatically be acknowledged.
 
-If `NOACK` is set then the event will never be put back onto the queue, and it
-is not necessary for the consumer to [QACK](#qack) for it. Setting this option
-allows you to make a particular queue at-most-once (rather than at-least-once).
+Furthermore, when sending `EX 0` it is not necessary for the consumer to send
+a corresponding [QACK](#qack). Setting this option allows you to make a
+particular queue at-most-once (rather than at-least-once).
 
 Returns an array-reply with the eventID and contents of the right-most event, or
 nil if the queue is empty.
