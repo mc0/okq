@@ -78,48 +78,58 @@ func subSpin() {
 // they don't care about
 func subManager(subConn *pubsubch.PubSubCh, updateCh chan struct{}) {
 	lastSubscribedQueues := []string{}
+	tick := time.Tick(30 * time.Second)
 	// ensure we run immediately by filling the channel
 	select {
 	case updateCh <- struct{}{}:
 	default:
 	}
 
+outer:
 	for {
-		if _, ok := <-updateCh; !ok {
-			break
-		}
-
-		queueNames := registeredQueues()
-		queuesAdded := stringSliceSub(queueNames, lastSubscribedQueues)
-		queuesRemoved := stringSliceSub(lastSubscribedQueues, queueNames)
-
-		lastSubscribedQueues = queueNames
-
-		if len(queuesRemoved) != 0 {
-			var redisChannels []string
-			for i := range queuesRemoved {
-				channelName := db.QueueChannelNameKey(queuesRemoved[i])
-				redisChannels = append(redisChannels, channelName)
+		select {
+		case <-tick:
+			if err := subConn.Ping(); err != nil {
+				log.L.Printf("notifyConsumers error pinging: %v", err)
+				break outer
+			}
+		case _, ok := <-updateCh:
+			if !ok {
+				break outer
 			}
 
-			log.L.Debugf("unsubscribing from %v", redisChannels)
-			if _, err := subConn.Unsubscribe(redisChannels...); err != nil {
-				log.L.Printf("notifyConsumers error unsubscribing: %v", err)
-				break
-			}
-		}
+			queueNames := registeredQueues()
+			queuesAdded := stringSliceSub(queueNames, lastSubscribedQueues)
+			queuesRemoved := stringSliceSub(lastSubscribedQueues, queueNames)
 
-		if len(queuesAdded) != 0 {
-			var redisChannels []string
-			for i := range queuesAdded {
-				channelName := db.QueueChannelNameKey(queuesAdded[i])
-				redisChannels = append(redisChannels, channelName)
+			lastSubscribedQueues = queueNames
+
+			if len(queuesRemoved) != 0 {
+				var redisChannels []string
+				for i := range queuesRemoved {
+					channelName := db.QueueChannelNameKey(queuesRemoved[i])
+					redisChannels = append(redisChannels, channelName)
+				}
+
+				log.L.Debugf("unsubscribing from %v", redisChannels)
+				if _, err := subConn.Unsubscribe(redisChannels...); err != nil {
+					log.L.Printf("notifyConsumers error unsubscribing: %v", err)
+					break outer
+				}
 			}
 
-			log.L.Debugf("subscribing to %v", redisChannels)
-			if _, err := subConn.Subscribe(redisChannels...); err != nil {
-				log.L.Printf("notifyConsumers error subscribing: %v", err)
-				break
+			if len(queuesAdded) != 0 {
+				var redisChannels []string
+				for i := range queuesAdded {
+					channelName := db.QueueChannelNameKey(queuesAdded[i])
+					redisChannels = append(redisChannels, channelName)
+				}
+
+				log.L.Debugf("subscribing to %v", redisChannels)
+				if _, err := subConn.Subscribe(redisChannels...); err != nil {
+					log.L.Printf("notifyConsumers error subscribing: %v", err)
+					break outer
+				}
 			}
 		}
 	}
