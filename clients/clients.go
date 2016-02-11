@@ -5,7 +5,7 @@ import (
 	"io"
 	"net"
 
-	"code.google.com/p/go-uuid/uuid"
+	"github.com/pborman/uuid"
 )
 
 var uuidCh = make(chan string, 128)
