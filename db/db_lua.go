@@ -15,9 +15,29 @@ var luaScripts = map[string]*lua{
 	"LREMRPUSH": {script: `local n = redis.call("LREM", KEYS[1], 0, ARGV[1])
 		if n > 0 then
 		    redis.call("RPUSH", KEYS[2], ARGV[1])
-			end
+		end
 		return n`,
 	},
+
+	"RPOPLPUSH_LOCK_HGET": {script: `
+		local unclaimedKey = KEYS[1]
+		local claimedKey = KEYS[2]
+		local itemsKey = KEYS[3]
+		local queueName = ARGV[1]
+		local lockExpires = ARGV[2]
+
+		local e = redis.call("RPOPLPUSH", unclaimedKey, claimedKey)
+		if not e then
+			return nil
+		end
+
+		-- duplicating the logic from ItemLockKey, unfortunately
+		local lockKey = "queue:{" .. queueName .. "}:lock:" .. e
+		local r = redis.call("SET", lockKey, 1, "EX", lockExpires, "NX")
+
+		local er = redis.call("HGET", itemsKey, e)
+		return {e, er}
+	`},
 }
 
 func initLuaScripts() error {
