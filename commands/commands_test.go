@@ -136,6 +136,10 @@ func TestBasicFunctionality(t *T) {
 		Dispatch(client, "qack", []string{queue, events[i].eventID})
 		readAndAssertInt(t, client, 1)
 	}
+
+	// Make sure qrpop on an empty queue does the right thing
+	Dispatch(client, "qrpop", []string{queue})
+	readAndAssertNil(t, client)
 }
 
 func TestQStatus(t *T) {

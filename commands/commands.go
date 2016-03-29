@@ -167,35 +167,23 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	reply := db.Inst.Cmd("RPOPLPUSH", unclaimedKey, claimedKey)
+	itemsKey := db.ItemsKey(queueName)
+
+	reply := db.Inst.Lua("RPOPLPUSH_LOCK_HGET", 3, unclaimedKey, claimedKey, itemsKey, queueName, expires)
 	if reply.IsType(redis.Nil) {
 		return nil, nil
 	}
 
-	eventID, err := reply.Str()
+	r, err := reply.List()
 	if err != nil {
-		return nil, fmt.Errorf("QRPOP RPOPLPUSH: %s", err)
-	}
-
-	lockKey := db.ItemLockKey(queueName, eventID)
-	reply = db.Inst.Cmd("SET", lockKey, 1, "EX", expires, "NX")
-	if err = reply.Err; err != nil {
-		return nil, fmt.Errorf("QRPOP SET: %s", err)
-	}
-
-	itemsKey := db.ItemsKey(queueName)
-	reply = db.Inst.Cmd("HGET", itemsKey, eventID)
-
-	var eventRaw string
-	if eventRaw, err = reply.Str(); err != nil {
-		return nil, fmt.Errorf("QRPOP HGET: %s", err)
+		return nil, fmt.Errorf("QRPOP RPOPLPUSH_LOCK_HGET: %s", err)
 	}
 
 	if noack {
-		qack(client, []string{queueName, eventID})
+		qack(client, []string{queueName, r[0]})
 	}
 
-	return []string{eventID, eventRaw}, nil
+	return r, nil
 }
 
 func qack(client *clients.Client, args []string) (interface{}, error) {
