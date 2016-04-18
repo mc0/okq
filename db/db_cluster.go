@@ -78,6 +78,6 @@ func (d *clusterDB) Lua(cmd string, numKeys int, args ...interface{}) *redis.Res
 	return luaHelper(c, cmd, numKeys, args...)
 }
 
-func (d *clusterDB) GetAddr() string {
-	return d.GetAddrForKey("")
+func (d *clusterDB) GetAddr() (string, error) {
+	return d.GetAddrForKey(""), nil
 }

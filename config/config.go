@@ -11,6 +11,9 @@ var (
 	ListenAddr     string
 	RedisAddr      string
 	RedisCluster   bool
+	RedisSentinel   bool
+	RedisSentinels  []string
+	RedisSentinelGroup  string
 	Debug          bool
 	BGPushPoolSize int
 )
@@ -28,9 +31,18 @@ func init() {
 		Default:     "127.0.0.1:6379",
 	})
 	l.Add(lever.Param{
+		Name:        "--redis-sentinel-addr",
+		Description: "A sentinel address to connect to through to the client - overrides other options",
+	})
+	l.Add(lever.Param{
 		Name:        "--redis-cluster",
 		Description: "Whether or not to treat the redis address as a node in a larger cluster",
 		Flag:        true,
+	})
+	l.Add(lever.Param{
+		Name:        "--redis-sentinel-group",
+		Description: "A redis sentinel group name for selecting which redis masters to connect",
+		Default:     "master",
 	})
 	l.Add(lever.Param{
 		Name:        "--debug",
@@ -48,6 +60,8 @@ func init() {
 	ListenAddr, _ = l.ParamStr("--listen-addr")
 	RedisAddr, _ = l.ParamStr("--redis-addr")
 	RedisCluster = l.ParamFlag("--redis-cluster")
+	RedisSentinels, RedisSentinel = l.ParamStrs("--redis-sentinel")
+	RedisSentinelGroup, _ = l.ParamStr("--redis-sentinel-group")
 	Debug = l.ParamFlag("--debug")
 	BGPushPoolSize, _ = l.ParamInt("--bg-push-pool-size")
 }
