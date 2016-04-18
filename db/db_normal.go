@@ -85,6 +85,6 @@ func (d normalDB) Lua(cmd string, numKeys int, args ...interface{}) *redis.Resp 
 	return r
 }
 
-func (d normalDB) GetAddr() string {
-	return config.RedisAddr
+func (d normalDB) GetAddr() (string, error) {
+	return config.RedisAddr, nil
 }

@@ -51,7 +51,7 @@ type DBer interface {
 
 	// GetAddr returns any valid address of a redis instance. Useful for cases
 	// where we want to create redis connections external to this db package
-	GetAddr() string
+	GetAddr() (string, error)
 }
 
 // PipePart is a single command to be run in a pipe. See Pipe for an example on
@@ -73,7 +73,9 @@ var Inst DBer
 
 func init() {
 	var err error
-	if config.RedisCluster {
+	if config.RedisSentinel {
+		Inst, err = newSentinelDB()
+	} else if config.RedisCluster {
 		Inst, err = newClusterDB()
 	} else {
 		Inst, err = newNormalDB()

@@ -23,7 +23,12 @@ var updateNotifyCh = make(chan struct{}, 1)
 // passes those messages along
 func subSpin() {
 	for {
-		addr := db.Inst.GetAddr()
+		addr, err := db.Inst.GetAddr()
+		if err != nil {
+			log.L.Printf("notifyConsumers error getting addr: %v", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
 		subConn, err := pubsubch.DialTimeout(addr, 2500*time.Millisecond)
 		if err != nil {
 			log.L.Printf("notifyConsumers error connecting: %v", err)
