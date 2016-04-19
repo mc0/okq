@@ -14,7 +14,7 @@ and interface.
 
 * Binary safe
 
-* Supports a single redis instance or a redis cluster
+* Supports a single redis instance, redis sentinel or a redis cluster
 
 * Multiple okq instances can run on the same redis instance/cluster without
   knowing about each other, easing deployment

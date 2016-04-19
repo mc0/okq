@@ -14,7 +14,7 @@ type sentinelDB struct {
 func newSentinelDB() (DBer, error) {
 	clients := make([]*sentinel.Client, len(config.RedisSentinels))
 	for i, server := range config.RedisSentinels {
-		log.L.Printf("connecting to redis sentinel at %s", config.RedisAddr)
+		log.L.Printf("connecting to redis sentinel at %s", server)
 		c, err := sentinel.NewClient("tcp", server, 10, config.RedisSentinelGroup)
 		if err != nil {
 			log.L.Fatal(err)

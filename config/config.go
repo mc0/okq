@@ -60,7 +60,7 @@ func init() {
 	ListenAddr, _ = l.ParamStr("--listen-addr")
 	RedisAddr, _ = l.ParamStr("--redis-addr")
 	RedisCluster = l.ParamFlag("--redis-cluster")
-	RedisSentinels, RedisSentinel = l.ParamStrs("--redis-sentinel")
+	RedisSentinels, RedisSentinel = l.ParamStrs("--redis-sentinel-addr")
 	RedisSentinelGroup, _ = l.ParamStr("--redis-sentinel-group")
 	Debug = l.ParamFlag("--debug")
 	BGPushPoolSize, _ = l.ParamInt("--bg-push-pool-size")
