@@ -13,7 +13,7 @@ type normalDB struct {
 
 func newNormalDB() (DBer, error) {
 	log.L.Printf("connecting to redis at %s", config.RedisAddr)
-	p, err := pool.New("tcp", config.RedisAddr, 200)
+	p, err := pool.New("tcp", config.RedisAddr, config.RedisPoolSize)
 	if err != nil {
 		log.L.Fatal(err)
 	}

@@ -8,14 +8,15 @@ import (
 
 // Variables populated by the flag parsing process at runtime
 var (
-	ListenAddr     string
-	RedisAddr      string
-	RedisCluster   bool
-	RedisSentinel   bool
-	RedisSentinels  []string
-	RedisSentinelGroup  string
-	Debug          bool
-	BGPushPoolSize int
+	ListenAddr         string
+	RedisAddr          string
+	RedisCluster       bool
+	RedisSentinel      bool
+	RedisSentinels     []string
+	RedisSentinelGroup string
+	RedisPoolSize      int
+	Debug              bool
+	BGPushPoolSize     int
 )
 
 func init() {
@@ -45,6 +46,11 @@ func init() {
 		Default:     "master",
 	})
 	l.Add(lever.Param{
+		Name:        "--redis-pool-size",
+		Description: "Number of connections to make to redis. If cluster or sentinel is being used this many connections will be made to *each* instance involved",
+		Default:     "50",
+	})
+	l.Add(lever.Param{
 		Name:        "--debug",
 		Aliases:     []string{"-d"},
 		Description: "Turn on debug logging",
@@ -62,6 +68,7 @@ func init() {
 	RedisCluster = l.ParamFlag("--redis-cluster")
 	RedisSentinels, RedisSentinel = l.ParamStrs("--redis-sentinel-addr")
 	RedisSentinelGroup, _ = l.ParamStr("--redis-sentinel-group")
+	RedisPoolSize, _ = l.ParamInt("--redis-pool-size")
 	Debug = l.ParamFlag("--debug")
 	BGPushPoolSize, _ = l.ParamInt("--bg-push-pool-size")
 }
