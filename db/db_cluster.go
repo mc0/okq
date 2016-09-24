@@ -13,7 +13,10 @@ type clusterDB struct {
 
 func newClusterDB() (DBer, error) {
 	log.L.Printf("connecting to redis cluster at %s", config.RedisAddr)
-	c, err := cluster.New(config.RedisAddr)
+	c, err := cluster.NewWithOpts(cluster.Opts{
+		Addr:     config.RedisAddr,
+		PoolSize: config.RedisPoolSize,
+	})
 	if err != nil {
 		log.L.Fatal(err)
 	}
