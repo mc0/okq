@@ -17,6 +17,7 @@ var (
 	RedisPoolSize      int
 	Debug              bool
 	BGPushPoolSize     int
+	CPUProfile         string
 )
 
 func init() {
@@ -61,6 +62,10 @@ func init() {
 		Description: "Number of goroutines to have processing NOBLOCK Q*PUSH commands",
 		Default:     "128",
 	})
+	l.Add(lever.Param{
+		Name:        "--cpu-profile",
+		Description: "Name of a file to write a cpu profile out to. If set the cpu profile will be written until okq is closed",
+	})
 	l.Parse()
 
 	ListenAddr, _ = l.ParamStr("--listen-addr")
@@ -71,4 +76,5 @@ func init() {
 	RedisPoolSize, _ = l.ParamInt("--redis-pool-size")
 	Debug = l.ParamFlag("--debug")
 	BGPushPoolSize, _ = l.ParamInt("--bg-push-pool-size")
+	CPUProfile, _ = l.ParamStr("--cpu-profile")
 }
