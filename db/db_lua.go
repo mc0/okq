@@ -12,12 +12,14 @@ type lua struct {
 }
 
 var luaScripts = map[string]*lua{
-	"LREMRPUSH": {script: `local n = redis.call("LREM", KEYS[1], 0, ARGV[1])
+	// LREMRPUSH src dst lremCount value
+	"LREMRPUSH": {script: `
+		local n = redis.call("LREM", KEYS[1], ARGV[1], ARGV[2])
 		if n > 0 then
-		    redis.call("RPUSH", KEYS[2], ARGV[1])
+		    redis.call("RPUSH", KEYS[2], ARGV[2])
 		end
-		return n`,
-	},
+		return n
+	`},
 
 	"RPOPLPUSH_LOCK_HGET": {script: `
 		local unclaimedKey = KEYS[1]

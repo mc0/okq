@@ -190,7 +190,7 @@ nil if the queue is empty.
 
 ### QACK
 
-> QACK queue eventID
+> QACK queue eventID [REDO]
 
 Acknowledges that it is safe for okq to forget about this event for this queue.
 
@@ -198,6 +198,10 @@ If this is not called within some amount of time after popping the event off the
 queue (see [QRPOP](#qrpop) for more on configuring that timeout) then the event
 will be placed back onto the right side of the queue (so it will be consumed
 next).
+
+If the event is awaiting a QACK and `REDO` is given then the event will be
+put back onto the right side of the queue (so it will be consumed next) and made
+available to other consumers again.
 
 Returns an integer `1` if the event was acknowledged successfully, or `0` if not
 (implying the event timed out or it was acknowledged by another consumer).

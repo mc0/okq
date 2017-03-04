@@ -34,7 +34,7 @@ type DBer interface {
 	// Scan is a function which returns a channel to which keys matching the
 	// given pattern are written to. The channel must be read from until it is
 	// closed, which occurs when there are no more keys or when an error has
-	// occured (this error will be logged)
+	// occurred (this error will be logged)
 	//
 	// This should not be used in any critical paths
 	Scan(string) <-chan string
@@ -46,7 +46,7 @@ type DBer interface {
 	//
 	// Example:
 	//
-	//	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", "value")
+	//	db.Lua(redisClient, "LREMRPUSH", 2, "foo", "bar", -1, "value")
 	Lua(string, int, ...interface{}) *redis.Resp
 
 	// GetAddr returns any valid address of a redis instance. Useful for cases

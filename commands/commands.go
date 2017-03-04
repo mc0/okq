@@ -188,12 +188,33 @@ func qrpop(client *clients.Client, args []string) (interface{}, error) {
 
 func qack(client *clients.Client, args []string) (interface{}, error) {
 	queueName, eventID := args[0], args[1]
+	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
+	redo := len(args) > 2 && isEqualUpper("REDO", args[2])
 
-	var numRemoved int
-	numRemoved, err := db.Inst.Cmd("LREM", claimedKey, -1, eventID).Int()
+	var removeFn func(string) (int, error)
+	var fnName string // used for error logging
+	if redo {
+		fnName = "LREMRPUSH"
+		removeFn = func(srcKey string) (int, error) {
+			return db.Inst.Lua("LREMRPUSH", 2, srcKey, unclaimedKey, -1, eventID).Int()
+		}
+	} else {
+		fnName = "LREM"
+		removeFn = func(srcKey string) (int, error) {
+			return db.Inst.Cmd("LREM", srcKey, -1, eventID).Int()
+		}
+	}
+
+	numRemoved, err := removeFn(claimedKey)
 	if err != nil {
-		return nil, fmt.Errorf("QACK LREM (claimed): %s", err)
+		return nil, fmt.Errorf("QACK %s (claimed): %s", fnName, err)
+	} else if redo {
+		// If the QACK was for a redo then we have nothing more to do here,
+		// regardless of what the numRemoved was. We don't want to remove it
+		// from unclaimed because the goal is to put the event there, and we
+		// don't want to delete the item key cause we want it redone.
+		return numRemoved, nil
 	}
 
 	// If we didn't removed the eventID from the claimed events we see if it can
@@ -201,11 +222,10 @@ func qack(client *clients.Client, args []string) (interface{}, error) {
 	// eventID isn't in claimed since unclaimed can be really large, so LREM is
 	// slow on it
 	if numRemoved == 0 {
-		unclaimedKey := db.UnclaimedKey(queueName)
 		var err error
-		numRemoved, err = db.Inst.Cmd("LREM", unclaimedKey, -1, eventID).Int()
+		numRemoved, err = removeFn(unclaimedKey)
 		if err != nil {
-			return nil, fmt.Errorf("QACK LREM (unclaimed): %s", err)
+			return nil, fmt.Errorf("QACK %s (unclaimed): %s", fnName, err)
 		}
 	}
 
