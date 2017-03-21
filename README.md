@@ -341,8 +341,13 @@ Here is the general order of events for a consumer for the `foo`, `bar`, and
    will return the eventID and its contents.
 
 4) At this point any application specific logic for the event should be run.
-   Assuming success call `QACK <queue name from previous steps> <eventID>`. Go
-   back to step 2.
+    a) If QRPOP was called with `EX 0` nothing else is required.
+    b) If the event was successfully processed call `QACK <queue name> <eventID>`
+       to mark it as successfully completed
+    c) If the event was not successfully processed then call `QACK <queue name> <eventID> REDO`
+       to place it back in the queue to be re-attempted.
+
+5) Go back to step 2
 
 It's likely that you'll want to write some generic wrapper code for this in your
 language, if someone else hasnt written it already.
