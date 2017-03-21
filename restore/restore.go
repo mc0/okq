@@ -67,6 +67,6 @@ func validateClaimedEvents() {
 func restoreEventToQueue(queueName string, eventID string) error {
 	unclaimedKey := db.UnclaimedKey(queueName)
 	claimedKey := db.ClaimedKey(queueName)
-	r := db.Inst.Lua("LREMRPUSH", 2, claimedKey, unclaimedKey, eventID)
+	r := db.Inst.Lua("LREMRPUSH", 2, claimedKey, unclaimedKey, 0, eventID)
 	return r.Err
 }

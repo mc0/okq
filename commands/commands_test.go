@@ -122,6 +122,7 @@ func TestBasicFunctionality(t *T) {
 		{"0", "foo"},
 		{"1", "bar"},
 		{"2", "baz"},
+		{"3", "redo"},
 	}
 
 	for i := range events {
@@ -129,13 +130,22 @@ func TestBasicFunctionality(t *T) {
 		readAndAssertStr(t, client, "OK")
 	}
 
-	for i := range events {
+	for _, event := range events {
 		Dispatch(client, "qrpop", []string{queue})
-		readAndAssertArr(t, client, []string{events[i].eventID, events[i].event})
+		readAndAssertArr(t, client, []string{event.eventID, event.event})
 
-		Dispatch(client, "qack", []string{queue, events[i].eventID})
+		if event.event == "redo" {
+			Dispatch(client, "qack", []string{queue, event.eventID, "REDO"})
+		} else {
+			Dispatch(client, "qack", []string{queue, event.eventID})
+		}
 		readAndAssertInt(t, client, 1)
 	}
+
+	// We had one redo event, it should be back on unclaimed, check by doing
+	// another qrpop
+	Dispatch(client, "qrpop", []string{queue})
+	readAndAssertArr(t, client, []string{"3", "redo"})
 
 	// Make sure qrpop on an empty queue does the right thing
 	Dispatch(client, "qrpop", []string{queue})
